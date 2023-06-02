@@ -169,7 +169,7 @@ int main(void)
     COORD coord;
     coord.X = 1; // Starting X position
     coord.Y = 1; // Starting Y position
-    WORD attribute = 0 | BACKGROUND_INTENSITY | BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
+    WORD attribute = FOREGROUND_RED;
     DWORD written;
 
     FillConsoleOutputAttribute(hConsole, attribute, 1, coord, &written);

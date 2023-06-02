@@ -26,6 +26,8 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+int DEBUG_STATE = 1;
+
 char *DATA_TYPE = "str";
 
 typedef int pixel_type;
@@ -423,15 +425,18 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
     if (curr_section->type == LIST)
     {
         List *list = curr_section->el;
-        y_clean_start = curr_widget->pos_y + curr_section->pos_y + focus_index;
+        y_clean_start = curr_widget->pos_y + curr_section->pos_y + focus_index + 1;
         y_clean_end = y_clean_start + 1;
-        x_clean_start = curr_widget->pos_x + curr_section->pos_x;
+        x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
         x_clean_end = x_clean_start + list->min_width;
     }
     else
     {
         exit_on_error("Section type undefined for new_section", __func__, __LINE__);
     }
+
+    printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
+           x_clean_start, x_clean_end, y_clean_start, y_clean_end);
 
     // Clean section pixels
     for (size_t y = y_clean_start; y < y_clean_end; y++)
@@ -444,19 +449,12 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
     }
 }
 
-void next_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
+bool change_focused_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
                   int focus_index)
 {
 
-    // printf("pos_x: %zu, pos_y: %zu, focus_index: %zu\n",
-    //        curr_section->pos_x, curr_section->pos_y,
-    //        focus_index);
-
-    if (focus_index - 1 >= 0)
-    {
-        // Not first element, can clean previous element
-        clean_element(pixels, curr_widget, curr_section, focus_index - 1);
-    }
+    // printf("In next.\nfocus_index at the start: %d, pos_x: %zu, pos_y: %zu\n",
+    //        focus_index, curr_section->pos_x, curr_section->pos_y);
 
     size_t y_new_start;
     size_t y_new_end;
@@ -466,29 +464,85 @@ void next_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
     if (curr_section->type == LIST)
     {
         List *list = curr_section->el;
+
+        if (focus_index == (int)list->item_count || focus_index < 0)
+        {
+            return false;
+        }
+
+        y_new_start = (curr_widget->pos_y + curr_section->pos_y) + focus_index + 1;
+        y_new_end = y_new_start + 1;
+        x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
+        x_new_end = x_new_start + list->min_width;
+
+        if (focus_index - 1 >= 0)
+        {
+            // Not first or last element, can clean previous element
+            clean_element(pixels, curr_widget, curr_section, focus_index - 1);
+        }
+         if (focus_index + 1 <= (int)list->item_count)
+        {
+            clean_element(pixels, curr_widget, curr_section, focus_index + 1);
+        }
+    }
+    else
+    {
+        exit_on_error("Section type undefined", __func__, __LINE__);
+    }
+
+    printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
+           x_new_start, x_new_end, y_new_start, y_new_end);
+
+    // Set new focused pixels
+    for (size_t y = y_new_start; y < y_new_end; y++)
+    {
+        for (size_t x = x_new_start; x < x_new_end; ++x)
+        {
+            ((*pixels)[y][x]).focused = FOCUSED;
+        }
+    }
+
+    return true;
+}
+bool prev_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
+                  int focus_index)
+{
+    printf("In prev.\nfocus_index at the start: %d, pos_x: %zu, pos_y: %zu\n",
+           focus_index, curr_section->pos_x, curr_section->pos_y);
+
+    size_t y_new_start;
+    size_t y_new_end;
+    size_t x_new_start;
+    size_t x_new_end;
+
+    if (curr_section->type == LIST)
+    {
+        if (focus_index < 0)
+        {
+
+            return false;
+        }
+
+        List *list = curr_section->el;
+
         y_new_start = curr_widget->pos_y + curr_section->pos_y + focus_index + 1;
         y_new_end = y_new_start + 1;
         x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
         x_new_end = x_new_start + list->min_width;
+
+        if (focus_index + 1 <= (int)list->item_count)
+        {
+            // Not last element, can clean previous element
+            clean_element(pixels, curr_widget, curr_section, focus_index + 1);
+        }
     }
     else
     {
-        exit_on_error("Section type undefined for new_section", __func__, __LINE__);
+        exit_on_error("Section type undefined", __func__, __LINE__);
     }
 
-    // Clean previous focused pixels
-    //     {
-    //         size_t y = s->pos_y + focus_index;
-    //         for (size_t y = 0; y < count; y++)
-    //         {
-
-    //             for (size_t x = s->pos_x; x < s->pos_x + s->min_width; ++x)
-    //             {
-    //                 ((*pixels)[y][x]).active = INACTIVE;
-    //             }
-    //         }
-    //     }
-
+    printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
+           x_new_start, x_new_end, y_new_start, y_new_end);
     // Set new focused pixels
     for (size_t y = y_new_start; y < y_new_end; y++)
     {
@@ -498,57 +552,33 @@ void next_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
             ((*pixels)[y][x]).focused = FOCUSED;
         }
     }
+
+    return true;
 }
-// void prev_element(Pixel ***pixels, Widget *w, int element_index)
-// {
 
-//     // printf("pos_x: %zu, pos_y: %zu, element_index: %zu, item_count: %zu, min_width: %zu\n",
-//     //        w->list->pos_x, w->list->pos_y,
-//     //        element_index, w->list->item_count,
-//     //        w->list->min_width);
+void render_debug(Pixel **pixels, size_t window_width, size_t window_height)
+{
+    printf("DEBUG_STATE: %d\n", DEBUG_STATE);
+    DEBUG_STATE++;
+    for (size_t y = 0; y < (size_t)window_height; y++)
+    {
+        for (size_t x = 0; x < (size_t)window_width; x++)
+        {
+            Pixel curr_pixel = pixels[y][x];
 
-//     // Set next element to inactive
-//     {
-//         size_t y = w->list->pos_y + element_index;
-//         for (size_t x = w->list->pos_x; x < w->list->pos_x + w->list->min_width; ++x)
-//         {
-//             ((*pixels)[y][x]).active = INACTIVE;
-//         }
-//     }
+            if (curr_pixel.focused)
+            {
+                printf("%c", '+');
+            }
+            else
+            {
+                printf("%c", curr_pixel.pixel);
+            }
+        }
+    }
 
-//     // Set previous element to active
-//     {
-//         size_t y = w->list->pos_y + (element_index - 1);
-//         for (size_t x = w->list->pos_x; x < w->list->pos_x + w->list->min_width; ++x)
-//         {
-//             ((*pixels)[y][x]).active = ACTIVE;
-//         }
-//     }
-// }
-
-// void next_widget(Pixel ***pixels, Widget *prev_widget, Widget *active_widget, int element_index)
-// {
-//     // Clear element from previous widget
-//     {
-//         size_t y = prev_widget->list->pos_y + element_index;
-//         for (size_t x = prev_widget->list->pos_x;
-//              x < prev_widget->list->pos_x + prev_widget->list->min_width;
-//              ++x)
-//         {
-//             ((*pixels)[y][x]).active = INACTIVE;
-//         }
-//     }
-
-//     // Active first item of new widget
-//     {
-//         size_t y = active_widget->list->pos_y;
-//         for (size_t x = active_widget->list->pos_x; x < active_widget->list->pos_x + active_widget->list->min_width;
-//              ++x)
-//         {
-//             ((*pixels)[y][x]).active = ACTIVE;
-//         }
-//     }
-// }
+    printf("\n");
+}
 
 void render(Pixel **pixels, size_t window_width, size_t window_height)
 {
@@ -557,7 +587,7 @@ void render(Pixel **pixels, size_t window_width, size_t window_height)
         for (size_t x = 0; x < (size_t)window_width; x++)
         {
             Pixel curr_pixel = pixels[y][x];
-            
+
             printf("%c", curr_pixel.pixel);
 
             if (curr_pixel.focused)
@@ -571,8 +601,6 @@ void render(Pixel **pixels, size_t window_width, size_t window_height)
 
                 FillConsoleOutputAttribute(hConsole, attribute, 1, coord, &written);
             }
-
-
         }
     }
 }
@@ -648,113 +676,132 @@ int main(void)
     system("cls");
     hideCursor();
 
-    int widget_id = 0;
-    Widget *curr_widget = get(widgets, widget_id);
+    int widget_index = 0;
+    // int section_index = 0;
+
+    Widget *curr_widget = get(widgets, widget_index);
     LinkedList *curr_widget_sections = curr_widget->sections;
     Section *curr_section = curr_widget_sections->next->value;
 
     int focus_index = 0;
-    next_element(&pixels, curr_section, curr_widget, focus_index);
 
-    render(pixels, window_width, window_height);
+    // Select initial element
+    change_focused_element(&pixels, curr_section, curr_widget, focus_index);
 
-    // char key;
-    // int arrowCode;
-    // bool need_to_render = true;
+    // render(pixels, window_width, window_height);
 
-    // while (key != 'q')
-    // {
-    //     if (need_to_render)
-    //     {
-    //         system("cls");
+    char key;
+    int arrowCode;
+    bool need_to_render = true;
 
-    //         render(pixels, window_width, window_height);
-    //         need_to_render = false;
-    //     }
+    while (key != 'q')
+    {
+        if (need_to_render)
+        {
+            // system("cls");
 
-    //     key = _getch();
+            render_debug(pixels, window_width, window_height);
+            need_to_render = false;
+        }
 
-    //     switch (key)
-    //     {
-    //     case -32:
-    //         arrowCode = _getch();
+        key = _getch();
 
-    //         if (arrowCode == 80)
-    //         {
-    //             // Arrow down
-    //             if (curr_section->type == LIST)
-    //             {
-    //                 List *list = curr_section->el;
-    //                 if ((size_t)(focus_index) + 1 < list->item_count)
-    //                 {
-    //                     next_element(&pixels, curr_widget_sections, curr_widget, focus_index);
-    //                     focus_index++;
-    //                     need_to_render = true;
-    //                 }
-    //             }
-    //             else
-    //             {
-    //                 exit_on_error("Section type undefined", __func__, __LINE__);
-    //             }
-    //         }
-    //         // else if (arrowCode == 72)
-    //         // {
-    //         //     // Arrow up
-    //         //     if (focus_index > 0)
-    //         //     {
-    //         //         prev_element(&pixels, curr_widget, focus_index);
-    //         //         focus_index--;
-    //         //         need_to_render = true;
-    //         //     }
-    //         // }
-    //         // break;
-    //     // case 9:
-    //     //     // Tab
-    //     //     if (GetKeyState(VK_SHIFT) & 0x8000)
-    //     //     {
-    //     //         //  Shift + Tab
-    //     //         if (widget_id >= 0)
-    //     //         {
-    //     //             widget_id++;
-    //     //             Widget *prev = curr_widget;
-    //     //             curr_widget = get(widgets, widget_id);
-    //     //             if (curr_widget->list != NULL)
-    //     //             {
-    //     //                 next_widget(&pixels, prev, curr_widget, element_index);
-    //     //                 element_index = 0;
-    //     //                 need_to_render = true;
-    //     //             }
-    //     //             else
-    //     //             {
-    //     //                 curr_widget = prev;
-    //     //                 widget_id--;
-    //     //             }
-    //     //         }
-    //     //         break;
-    //     //     }
+        switch (key)
+        {
+        case -32:
+            arrowCode = _getch();
 
-    //     //     if (widget_id + 1 < len(widgets))
-    //     //     {
-    //     //         widget_id++;
-    //     //         Widget *prev = curr_widget;
-    //     //         curr_widget = get(widgets, widget_id);
-    //     //         if (curr_widget->list != NULL)
-    //     //         {
-    //     //             next_widget(&pixels, prev, curr_widget, element_index);
-    //     //             element_index = 0;
-    //     //             need_to_render = true;
-    //     //         }
-    //     //         else
-    //     //         {
-    //     //             curr_widget = prev;
-    //     //             widget_id--;
-    //     //         }
-    //     //     }
-    //     //     break;
-    //     default:
-    //         break;
-    //     }
-    // }
+            if (arrowCode == 80)
+            {
+                // Arrow down
+                int temp_index = focus_index + 1;
+                need_to_render = change_focused_element(&pixels, curr_section, curr_widget, temp_index);
+                if (need_to_render)
+                {
+                    focus_index++;
+                }
+                // if (curr_section->type == LIST)
+                // {
+                //     List *list = curr_section->el;
+                //     if ((size_t)(focus_index) < list->item_count)
+                //     {
+                //         focus_index++;
+                //         need_to_render = true;
+                //     }
+                // }
+                // else
+                // {
+                //     exit_on_error("Section type undefined", __func__, __LINE__);
+                // }
+            }
+            else if (arrowCode == 72)
+            {
+                // Arrow up
+                // Go to correct index
+                int temp_index = focus_index - 1;
+
+                printf("temp in prev: %d\n", temp_index);
+                need_to_render = change_focused_element(&pixels, curr_section, curr_widget, temp_index);
+                if (need_to_render)
+                {
+                    focus_index--;
+                }
+
+                // if (focus_index > 0)
+                // {
+                //     prev_element(&pixels, curr_widget, focus_index);
+                //     focus_index--;
+                //     need_to_render = true;
+                // }
+            }
+            break;
+        // case 9:
+        //     // Tab
+        //     if (GetKeyState(VK_SHIFT) & 0x8000)
+        //     {
+        //         //  Shift + Tab
+        //         if (widget_index >= 0)
+        //         {
+        //             widget_index++;
+        //             Widget *prev = curr_widget;
+        //             curr_widget = get(widgets, widget_index);
+        //             if (curr_widget->list != NULL)
+        //             {
+        //                 next_widget(&pixels, prev, curr_widget, element_index);
+        //                 element_index = 0;
+        //                 need_to_render = true;
+        //             }
+        //             else
+        //             {
+        //                 curr_widget = prev;
+        //                 widget_index--;
+        //             }
+        //         }
+        //         break;
+        //     }
+
+        //     if (widget_index + 1 < len(widgets))
+        //     {
+        //         widget_index++;
+        //         Widget *prev = curr_widget;
+        //         curr_widget = get(widgets, widget_index);
+        //         if (curr_widget->list != NULL)
+        //         {
+        //             next_widget(&pixels, prev, curr_widget, element_index);
+        //             element_index = 0;
+        //             need_to_render = true;
+        //         }
+        //         else
+        //         {
+        //             curr_widget = prev;
+        //             widget_index--;
+        //         }
+        //     }
+        //     break;
+        default:
+            break;
+        }
+    }
 
     // Free the dynamically allocated memory
 

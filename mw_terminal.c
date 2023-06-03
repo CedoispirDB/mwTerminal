@@ -2,7 +2,14 @@
 #include <stdlib.h>
 #include <conio.h>
 #include <windows.h>
-#include "./linkedList/linkedList.h"
+#include "./utils/linkedList.h"
+
+#define EXIT_ON_ERROR(message)                                                            \
+    do                                                                                    \
+    {                                                                                     \
+        printf("Error: %s on \"%s\" function in line %d\n", message, __func__, __LINE__); \
+        exit(-1);                                                                         \
+    } while (0)
 
 // Pixel content
 #define EMPTY 0
@@ -15,14 +22,28 @@
 #define FOCUSED 1
 #define UNFOCUSED 0
 
-// Section Names
+// Section type
 #define LIST 0
 #define LABEL 1
 #define TEXT_BOX 2
+#define INPUT 3
 
-// Section types
+// Section state
 #define STATIC 0
 #define EDITABLE 1
+
+// Directions
+#define PREVIOUS 0
+#define NEXT 1
+#define CURRENT 2
+#define NONE 3
+
+// List condition
+#define CHECKED 1
+#define UNCHECKED 0
+
+// List type
+#define CHECK_BOX 0
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -31,29 +52,37 @@ int DEBUG_STATE = 1;
 char *DATA_TYPE = "str";
 
 typedef int pixel_type;
-typedef int section_name;
+typedef char *list_type;
+typedef int section_state;
 typedef int section_type;
 typedef struct Section Section;
+typedef struct Widget Widget;
 
-typedef struct Widget
+struct Widget
 {
     size_t width;
     size_t height;
     size_t pos_x;
     size_t pos_y;
     size_t id;
-    LinkedList *sections;
-} Widget;
+    Section *sections;
+    Widget *next;
+    Widget *prev;
+};
 
 struct Section
 {
     void *el;
-    section_name id;
+    section_state state;
     section_type type;
     size_t width;
     size_t height;
     size_t pos_x;
     size_t pos_y;
+    int id;
+    Section *next;
+    Section *prev;
+    char *label;
 };
 
 typedef struct List
@@ -61,6 +90,9 @@ typedef struct List
     LinkedList *items;
     size_t min_width;
     size_t item_count;
+    Section *target;
+    bool checked;
+    list_type type;
 } List;
 
 typedef struct TextBox
@@ -72,6 +104,11 @@ typedef struct Label
 {
     char *content;
 } Label;
+
+typedef struct Input
+{
+    char *buf;
+} Input;
 
 typedef struct Pixel
 {
@@ -98,12 +135,6 @@ void getWindowSize(int *width, int *height)
     *height = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
     // *width = csbi.dwMaximumWindowSize.X;
     // *height = csbi.dwMaximumWindowSize.Y;
-}
-
-void exit_on_error(char *message, const char *func, int line)
-{
-    printf("Error: %s on \"%s\" function in line %d\n", message, func, line);
-    exit(-1);
 }
 
 Pixel allocate_pixel(char pixel, pixel_type type, bool active, bool focused)
@@ -156,7 +187,7 @@ void create_window(Pixel ***pixels, int *width, int *height)
 
 Widget *allocate_widget(size_t width, size_t height,
                         size_t pos_x, size_t pos_y,
-                        size_t id, LinkedList *sections)
+                        size_t id, Section *sections)
 {
     Widget *w = malloc(sizeof(Widget));
 
@@ -166,46 +197,119 @@ Widget *allocate_widget(size_t width, size_t height,
     w->pos_y = pos_y;
     w->sections = sections;
     w->id = id;
+    w->next = NULL;
+    w->prev = NULL;
 
     return w;
 }
 
-Section *allocate_section(void *el, section_name name, size_t width, size_t heigth, size_t pos_x, size_t pos_y)
+void link_widgets(Widget *head, Widget *value)
+{
+
+    Widget *current = head;
+    Widget *last;
+
+    while (current != NULL)
+    {
+        last = current;
+        current = current->next;
+    }
+    last->next = value;
+    value->prev = last;
+}
+
+Section *allocate_section(void *el, section_type type, size_t width, size_t heigth, size_t pos_x, size_t pos_y, int id, char *label)
 {
     Section *s = malloc(sizeof(Section));
     s->el = el;
-    s->type = name;
+    s->type = type;
     s->pos_x = pos_x;
     s->pos_y = pos_y;
     s->width = width;
     s->height = heigth;
+    s->id = id;
+    s->label = label;
+    s->next = NULL;
+    s->prev = NULL;
 
-    switch (name)
+    switch (type)
     {
     case LIST:
-        s->type = STATIC;
+        s->state = EDITABLE;
         break;
     case LABEL:
-        s->type = EDITABLE;
+        s->state = STATIC;
         break;
     case TEXT_BOX:
-        s->type = EDITABLE;
+        s->state = STATIC;
+        break;
+    case INPUT:
+        s->state = EDITABLE;
         break;
     default:
-        exit_on_error("Section type undefined", __func__, __LINE__);
+        EXIT_ON_ERROR("Section type undefined");
         break;
     }
+
 
     return s;
 }
 
-List *allocate_list(LinkedList *items, size_t min_width)
+void link_sections(Section *head, Section *value)
+{
+
+    Section *current = head;
+    Section *last;
+
+    while (current != NULL)
+    {
+        last = current;
+        current = current->next;
+    }
+    last->next = value;
+    value->prev = last;
+}
+
+List *allocate_list(LinkedList *items, size_t min_width, list_type type, bool checked, Section *section)
 {
     List *list = malloc(sizeof(List));
-
     list->items = items;
     list->min_width = min_width;
     list->item_count = (size_t)len(items);
+    list->target = section;
+    list->type = type;
+    list->checked = checked;
+
+    if (type == CHECK_BOX)
+    {
+        LinkedList *temp = items;
+        char *prefix;
+        if (checked)
+        {
+            prefix = "- [x] ";
+        }
+        else
+        {
+            prefix = "- [ ] ";
+        }
+        while (temp != NULL)
+        {
+            char *value = temp->value;
+
+            size_t prefixLength = strlen(prefix);
+            size_t targetLength = strlen(value);
+
+            size_t newLength = prefixLength + targetLength + 1;
+
+            char *newString = malloc(newLength);
+
+            strcpy(newString, prefix);
+
+            strcat(newString, value);
+            temp->value = newString;
+            temp = temp->next;
+        }
+    }
 
     return list;
 }
@@ -245,34 +349,32 @@ size_t calculate_min_width(LinkedList *list)
     return min_width;
 }
 
-void update_section(Pixel ***pixels, Widget *w)
+void update_sections(Pixel ***pixels, Widget *w)
 {
     if (w->sections == NULL)
     {
         return;
     }
-    LinkedList *sections = w->sections;
-    Section *s;
+    Section *s = w->sections;
 
-    if (sections == NULL)
+    if (s == NULL)
     {
         return;
     }
 
     bool completed = false;
 
-    while (sections != NULL)
+    while (s != NULL)
     {
-        s = sections->value;
-        //     printf("s width: %zu, s height: %zu, s pos_x: %zu, s pos_y: %zu\n",
-        //            s->width, s->height, s->pos_x, s->pos_y);
-        //     printf("w width: %zu, w height: %zu, w pos_x: %zu, w pos_y: %zu\n",
-        //            w->width, w->height, w->pos_x, w->pos_y);
-
+        // printf("s width: %zu, s height: %zu, s pos_x: %zu, s pos_y: %zu\n",
+        //        s->width, s->height, s->pos_x, s->pos_y);
+        // printf("w width: %zu, w height: %zu, w pos_x: %zu, w pos_y: %zu\n",
+        //        w->width, w->height, w->pos_x, w->pos_y);
+        // printf("Section type: %d\n", s->type);
         size_t y_start = w->pos_y + s->pos_y + 1;
         size_t x_start = w->pos_x + s->pos_x + 1;
-        size_t y_limit = MIN((size_t)abs(s->height - y_start), (size_t)abs(w->height - y_start) + 1) + y_start;
-        size_t x_limit = MIN((size_t)abs(s->width - x_start), (size_t)abs(w->width - x_start)) + x_start;
+        size_t y_limit = y_start + s->height;
+        size_t x_limit = x_start + s->width;
 
         // printf("x_start: %zu, y_start: %zu, x_limit: %zu, y_limit: %zu\n",
         //        x_start, y_start, x_limit, y_limit);
@@ -295,6 +397,7 @@ void update_section(Pixel ***pixels, Widget *w)
                     {
                         item = items_list->value;
                         size_t item_length = strlen(item);
+
                         for (size_t i = 0; i < item_length; ++i)
                         {
                             Pixel *temp = &((*pixels)[y][x]);
@@ -331,87 +434,107 @@ void update_section(Pixel ***pixels, Widget *w)
                     completed = true;
                     break;
                 }
+                else if (s->type == INPUT)
+                {
+                    Pixel *temp = &((*pixels)[y][x]);
+
+                    if (y == y_start || y == y_limit - 1)
+                    {
+                        temp->pixel = '*';
+                    }
+                    else if (x == x_start || x == x_limit - 1)
+                    {
+                        temp->pixel = '*';
+                    }
+                    else
+                    {
+                        temp->pixel = ' ';
+                    }
+
+                    temp->active = ACTIVE;
+                    temp->focused = UNFOCUSED;
+                    temp->type = SECTION;
+                }
                 else
                 {
-                    exit_on_error("Section type undefined", __func__, __LINE__);
+                    EXIT_ON_ERROR("Section type undefined");
                     break;
                 }
             }
         }
 
-        sections = sections->next;
+        s = s->next;
         completed = false;
     }
 }
 
-void update_pixels(Pixel ***pixels, LinkedList *widgets, size_t window_width, size_t window_height)
+void update_widget(Pixel ***pixels, Widget *curr_widget, size_t window_width, size_t window_height)
+{
+    update_sections(pixels, curr_widget);
+    size_t y_start = curr_widget->pos_y;
+    size_t x_start = curr_widget->pos_x;
+    size_t y_limit = curr_widget->height + curr_widget->pos_y;
+    size_t x_limit = curr_widget->width + curr_widget->pos_x;
+
+    if (window_width % 2 != 0)
+    {
+        x_limit++;
+    }
+
+    if (window_height % 2 != 0)
+    {
+        y_limit++;
+    }
+
+    // printf("x_limit: %zu, y_limit: %zu\n", x_limit, y_limit);
+    for (size_t y = y_start; y < y_limit; ++y)
+    {
+        for (size_t x = x_start; x < x_limit; ++x)
+        {
+
+            Pixel *temp = &((*pixels)[y][x]);
+            // printf("%d ", temp->type);
+            if (!temp->active)
+            {
+                if (y == 0 || y == y_limit - 1)
+                {
+                    temp->pixel = '*';
+                    temp->active = ACTIVE;
+                    temp->focused = UNFOCUSED;
+                    temp->type = BORDER;
+                }
+                else if (x == x_start || x == x_limit - 1)
+                {
+                    temp->pixel = '*';
+                    temp->active = ACTIVE;
+                    temp->focused = UNFOCUSED;
+                    temp->type = BORDER;
+                }
+                else
+                {
+                    temp->pixel = ' ';
+                    temp->active = INACTIVE;
+                    temp->focused = UNFOCUSED;
+                    temp->type = EMPTY;
+                }
+            }
+        }
+    }
+}
+
+void update_pixels(Pixel ***pixels, Widget *widgets, size_t window_width, size_t window_height)
 {
 
     (void)window_height;
 
-    LinkedList *current = widgets;
-    Widget *el;
-
-    while (current != NULL)
+    while (widgets != NULL)
     {
-        el = current->value;
-
         // printf("%d\n", current == NULL);
         // printf("width: %zu, height: %zu, pos_x: %zu, pos_y: %zu\n",
         //        el->width, el->height, el->pos_x, el->pos_y);
+        update_widget(pixels, widgets, window_width, window_height);
 
-        update_section(pixels, el);
-
-        size_t y_start = el->pos_y;
-        size_t x_start = el->pos_x;
-        size_t y_limit = el->height + el->pos_y;
-        size_t x_limit = el->width + el->pos_x;
-
-        if (window_width % 2 != 0)
-        {
-            x_limit++;
-        }
-
-        if (window_height % 2 != 0)
-        {
-            y_limit++;
-        }
-
-        // printf("x_limit: %zu, y_limit: %zu\n", x_limit, y_limit);
-        for (size_t y = y_start; y < y_limit; ++y)
-        {
-            for (size_t x = x_start; x < x_limit; ++x)
-            {
-
-                Pixel *temp = &((*pixels)[y][x]);
-                // printf("%d ", temp->type);
-                if (!temp->active)
-                {
-                    if (y == 0 || y == y_limit - 1)
-                    {
-                        temp->pixel = '*';
-                        temp->active = ACTIVE;
-                        temp->focused = UNFOCUSED;
-                        temp->type = BORDER;
-                    }
-                    else if (x == x_start || x == x_limit - 1)
-                    {
-                        temp->pixel = '*';
-                        temp->active = ACTIVE;
-                        temp->focused = UNFOCUSED;
-                        temp->type = BORDER;
-                    }
-                    else
-                    {
-                        temp->pixel = ' ';
-                        temp->active = INACTIVE;
-                        temp->focused = UNFOCUSED;
-                        temp->type = EMPTY;
-                    }
-                }
-            }
-        }
-        current = current->next;
+        widgets = widgets->next;
     }
 }
 
@@ -428,15 +551,17 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
         y_clean_start = curr_widget->pos_y + curr_section->pos_y + focus_index + 1;
         y_clean_end = y_clean_start + 1;
         x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
-        x_clean_end = x_clean_start + list->min_width;
+        x_clean_end = x_clean_start + strlen(get(list->items, focus_index));
     }
     else
     {
-        exit_on_error("Section type undefined for new_section", __func__, __LINE__);
+        EXIT_ON_ERROR("Section type undefined for new_section");
     }
 
-    printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
-           x_clean_start, x_clean_end, y_clean_start, y_clean_end);
+    // printf("CLEAR\nCurrent section: %s\n", curr_section->label);
+
+    // printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
+    //        x_clean_start, x_clean_end, y_clean_start, y_clean_end);
 
     // Clean section pixels
     for (size_t y = y_clean_start; y < y_clean_end; y++)
@@ -449,12 +574,38 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
     }
 }
 
-bool change_focused_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
-                  int focus_index)
+void clean_section(Pixel ***pixels, Widget *curr_widget, Section *curr_section)
 {
 
-    // printf("In next.\nfocus_index at the start: %d, pos_x: %zu, pos_y: %zu\n",
-    //        focus_index, curr_section->pos_x, curr_section->pos_y);
+    size_t y_clean_start = curr_widget->pos_y + curr_section->pos_y + 1;
+    size_t y_clean_end = y_clean_start + curr_section->height;
+    size_t x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
+    size_t x_clean_end = x_clean_start + curr_section->width;
+
+    // printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
+    //        x_clean_start, x_clean_end, y_clean_start, y_clean_end);
+
+    for (size_t y = y_clean_start; y < y_clean_end; y++)
+    {
+
+        for (size_t x = x_clean_start; x < x_clean_end; ++x)
+        {
+            ((*pixels)[y][x]).focused = UNFOCUSED;
+            ((*pixels)[y][x]).active = INACTIVE;
+            ((*pixels)[y][x]).pixel = ' ';
+        }
+    }
+}
+
+bool change_focused_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section,
+                            int *focus_index_ptr, int dir)
+{
+    printf("Current section: %s\n", curr_section->label);
+
+    // printf("focus_index: %d, pos_x: %zu, pos_y: %zu\n",
+    //        *focus_index_ptr, curr_section->pos_x, curr_section->pos_y);
+
+    int focus_index = *focus_index_ptr;
 
     size_t y_new_start;
     size_t y_new_end;
@@ -465,7 +616,12 @@ bool change_focused_element(Pixel ***pixels, Section *curr_section, Widget *curr
     {
         List *list = curr_section->el;
 
-        if (focus_index == (int)list->item_count || focus_index < 0)
+        if (focus_index > (int)list->item_count)
+        {
+            *focus_index_ptr = list->item_count - 1;
+            focus_index = list->item_count - 1;
+        }
+        else if (focus_index == (int)list->item_count || focus_index < 0)
         {
             return false;
         }
@@ -473,25 +629,29 @@ bool change_focused_element(Pixel ***pixels, Section *curr_section, Widget *curr
         y_new_start = (curr_widget->pos_y + curr_section->pos_y) + focus_index + 1;
         y_new_end = y_new_start + 1;
         x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
-        x_new_end = x_new_start + list->min_width;
+        x_new_end = x_new_start + strlen(get(list->items, focus_index));
 
-        if (focus_index - 1 >= 0)
+        if (dir == NEXT && focus_index - 1 >= 0)
         {
             // Not first or last element, can clean previous element
             clean_element(pixels, curr_widget, curr_section, focus_index - 1);
         }
-         if (focus_index + 1 <= (int)list->item_count)
+        else if (dir == PREVIOUS && focus_index + 1 <= (int)list->item_count)
         {
             clean_element(pixels, curr_widget, curr_section, focus_index + 1);
+        }
+        else if (dir == CURRENT)
+        {
+            clean_element(pixels, curr_widget, curr_section, focus_index);
         }
     }
     else
     {
-        exit_on_error("Section type undefined", __func__, __LINE__);
+        EXIT_ON_ERROR("Section type undefined");
     }
 
-    printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
-           x_new_start, x_new_end, y_new_start, y_new_end);
+    // printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
+    //        x_new_start, x_new_end, y_new_start, y_new_end);
 
     // Set new focused pixels
     for (size_t y = y_new_start; y < y_new_end; y++)
@@ -504,53 +664,114 @@ bool change_focused_element(Pixel ***pixels, Section *curr_section, Widget *curr
 
     return true;
 }
-bool prev_element(Pixel ***pixels, Section *curr_section, Widget *curr_widget,
-                  int focus_index)
-{
-    printf("In prev.\nfocus_index at the start: %d, pos_x: %zu, pos_y: %zu\n",
-           focus_index, curr_section->pos_x, curr_section->pos_y);
 
-    size_t y_new_start;
-    size_t y_new_end;
-    size_t x_new_start;
-    size_t x_new_end;
+Section *get_next_editable_section(Section *curr_section)
+{
+
+    Section *s = curr_section;
+    Section *temp;
+    while (s != NULL)
+    {
+        temp = s;
+        if (temp->state == EDITABLE && temp->id != curr_section->id)
+        {
+            return temp;
+        }
+
+        s = s->next;
+    }
+
+    return NULL;
+}
+
+Section *get_prev_editable_section(Section *curr_section)
+{
+
+    Section *s = curr_section;
+    Section *temp;
+
+    while (s != NULL)
+    {
+        temp = s;
+
+        if (temp->state == EDITABLE && temp->id != curr_section->id)
+        {
+
+            return temp;
+        }
+
+        s = s->prev;
+    }
+
+    return NULL;
+}
+
+bool action(Pixel ***pixels, Widget *curr_widget, Section **curr_section_ptr,
+            int *focus_index, size_t window_width, size_t window_height)
+{
+
+    Section *curr_section = *curr_section_ptr;
+    if (curr_section->state == STATIC)
+    {
+        return false;
+    }
 
     if (curr_section->type == LIST)
     {
-        if (focus_index < 0)
-        {
-
-            return false;
-        }
-
         List *list = curr_section->el;
 
-        y_new_start = curr_widget->pos_y + curr_section->pos_y + focus_index + 1;
-        y_new_end = y_new_start + 1;
-        x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
-        x_new_end = x_new_start + list->min_width;
-
-        if (focus_index + 1 <= (int)list->item_count)
+        if (list->target == NULL)
         {
-            // Not last element, can clean previous element
-            clean_element(pixels, curr_widget, curr_section, focus_index + 1);
+            EXIT_ON_ERROR("target not valid for list");
         }
+
+        Section *target = list->target;
+        List *target_list = target->el;
+
+        // printf("Current: %s, Target: %s\n", curr_section->label, target->label);
+
+        char *item = get(list->items, *focus_index);
+        size_t item_len = strlen(item);
+
+        if (target_list->type == CHECK_BOX && list->type == CHECK_BOX)
+        {
+            if (list->checked)
+            {
+                item[3] = ' ';
+                list->checked = UNCHECKED;
+            }
+            else
+            {
+                item[3] = 'x';
+                list->checked = CHECKED;
+            }
+        }
+
+        delete (&list->items, *focus_index);
+        add(target_list->items, item);
+
+        // Clean section pixels
+        clean_section(pixels, curr_widget, curr_section);
+
+        curr_section->height--;
+        target->height++;
+
+        target->width = item_len > target->width ? item_len : target->width;
+
+        // Update widget
+        update_widget(pixels, curr_widget, window_width, window_height);
+
+        // Update list count
+        target_list->item_count++;
+        list->item_count--;
+        int temp = target_list->item_count - 1;
+        (*focus_index) = temp;
+        change_focused_element(pixels, curr_widget, target, &temp, NONE);
+        *curr_section_ptr = target;
     }
     else
     {
-        exit_on_error("Section type undefined", __func__, __LINE__);
-    }
-
-    printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
-           x_new_start, x_new_end, y_new_start, y_new_end);
-    // Set new focused pixels
-    for (size_t y = y_new_start; y < y_new_end; y++)
-    {
-
-        for (size_t x = x_new_start; x < x_new_end; ++x)
-        {
-            ((*pixels)[y][x]).focused = FOCUSED;
-        }
+        EXIT_ON_ERROR("Section type undefined");
     }
 
     return true;
@@ -570,18 +791,23 @@ void render_debug(Pixel **pixels, size_t window_width, size_t window_height)
             {
                 printf("%c", '+');
             }
+            // else
+            // if (!curr_pixel.active)
+            // {
+            //     printf("%c", 'x');
+            // }
             else
             {
                 printf("%c", curr_pixel.pixel);
             }
         }
     }
-
-    printf("\n");
 }
 
 void render(Pixel **pixels, size_t window_width, size_t window_height)
 {
+    system("cls");
+
     for (size_t y = 0; y < (size_t)window_height; y++)
     {
         for (size_t x = 0; x < (size_t)window_width; x++)
@@ -611,22 +837,22 @@ int main(void)
     char **todo_items;
     size_t todo_items_len = 3;
     todo_items = (char **)malloc(todo_items_len * sizeof(char *));
-    todo_items[0] = createStr("- [ ] Buy a bread");
-    todo_items[1] = createStr("- [ ] Eat");
-    todo_items[2] = createStr("- [ ] Drink code");
+    todo_items[0] = createStr("Buy a bread");
+    todo_items[1] = createStr("Eat");
+    todo_items[2] = createStr("Drink code");
 
     LinkedList *todo = convertArray(todo_items, todo_items_len);
-    size_t todo_min_width = calculate_min_width(todo);
+    size_t todo_min_width = calculate_min_width(todo) + 6;
 
     char **done_items;
     size_t done_items_len = 3;
     done_items = (char **)malloc(done_items_len * sizeof(char *));
-    done_items[0] = createStr("- [x] sleep");
-    done_items[1] = createStr("- [x] high");
-    done_items[2] = createStr("- [x] low");
+    done_items[0] = createStr("sleep");
+    done_items[1] = createStr("high");
+    done_items[2] = createStr("low");
 
     LinkedList *done = convertArray(done_items, done_items_len);
-    size_t done_min_width = calculate_min_width(done);
+    size_t done_min_width = calculate_min_width(done) + 6;
 
     // Create window
     int window_width, window_height;
@@ -637,28 +863,57 @@ int main(void)
     size_t widget_width = (size_t)window_width / 2;
     size_t widget_height = (size_t)window_height / 2;
 
-    // Create todo widget
-    List *todo_list = allocate_list(todo, todo_min_width);
-    Section *todo_section = allocate_section(todo_list, LIST, 0, 0, (widget_width / 2 - todo_min_width / 2), 1);
+    int gap = 2;
+    int todo_pos_x = (widget_width - todo_min_width - done_min_width - gap) / 2;
+    int done_pos_x = todo_pos_x + todo_min_width + gap;
+
+    int todo_label_name_len = 4;
+    int todo_label_d = (todo_min_width - todo_label_name_len) / 2;
+    int todo_label_pos_x = todo_label_d + todo_pos_x;
+
+    int done_label_name_len = 5;
+    int done_label_d = (done_min_width - done_label_name_len) / 2;
+    int done_label_pos_x = todo_label_pos_x + todo_label_name_len + todo_label_d + gap + done_label_d;
+
+    // printf("todo label pos: %d, done label pos: %d\n", todo_label_pos_x, done_label_pos_x);
+    // printf("min width done: %zu\n", done_min_width);
+
+    // -------------------------
+    // -   Create todo widget  -
+    // -------------------------
+
+    // Create todo list section
+    List *todo_list = allocate_list(todo, todo_min_width, CHECK_BOX, UNCHECKED, NULL);
+    Section *todo_section = allocate_section(todo_list, LIST, todo_min_width, todo_items_len, todo_pos_x, 1, 0, "TODO_LIST");
+
+    // Create todo label section
     Label *todo_label = allocate_label("TODO");
-    Section *todo_label_section = allocate_section(todo_label, LABEL, 0, 0, ((widget_width - 1) / 2 - 5 / 2) - 1, 0);
-    LinkedList *todo_widget_sections = add(NULL, todo_label_section);
-    add(todo_widget_sections, todo_section);
+    Section *todo_label_section = allocate_section(todo_label, LABEL, todo_label_name_len, 1, todo_label_pos_x, 0, 1, "TODO_LABEL");
 
     // Create done widget
-    List *done_list = allocate_list(done, done_min_width);
-    Section *done_section = allocate_section(done_list, LIST, 0, 0, (widget_width / 2 - done_min_width / 2), 1);
-    Label *done_label = allocate_label("DONE");
-    Section *done_label_section = allocate_section(done_label, LABEL, 0, 0, ((widget_width - 1) / 2 - 5 / 2) - 1, 0);
-    LinkedList *done_widget_sections = add(NULL, done_label_section);
-    add(done_widget_sections, done_section);
+    // Create done list section
+    List *done_list = allocate_list(done, done_min_width, CHECK_BOX, CHECKED, todo_section);
+    Section *done_section = allocate_section(done_list, LIST, done_min_width, done_items_len, done_pos_x, 1, 2, "DONE_LIST");
+    todo_list->target = done_section;
+
+    // Create done label section
+    Label *done_label = allocate_label(" DONE");
+    Section *done_label_section = allocate_section(done_label, LABEL, done_label_name_len, 1, done_label_pos_x, 0, 3, "DONE_LABEL");
+
+    // Create Input section
+    Input *input = malloc(sizeof(Input));
+    Section *input_section = allocate_section(input, INPUT, 30, 3, 10, 3, 0, "INPUT_BOX");
+    // Link sections together
+    link_sections(todo_label_section, todo_section);
+    link_sections(todo_label_section, done_label_section);
+    link_sections(todo_label_section, done_section);
 
     Widget *w = allocate_widget(widget_width, widget_height,
                                 0, 0,
-                                0, todo_widget_sections);
+                                0, todo_label_section);
     Widget *w2 = allocate_widget(widget_width, widget_height,
                                  widget_width, 0,
-                                 1, done_widget_sections);
+                                 1, input_section);
     Widget *w3 = allocate_widget(widget_width, widget_height,
                                  0, widget_height,
                                  2, NULL);
@@ -666,29 +921,26 @@ int main(void)
                                  widget_width, widget_height,
                                  3, NULL);
 
-    LinkedList *widgets = add(NULL, w);
+    link_widgets(w, w2);
+    link_widgets(w, w3);
+    link_widgets(w, w4);
 
-    add(widgets, w2);
-    add(widgets, w3);
-    add(widgets, w4);
-    // add_widgets(&pixels, widgets);
-    update_pixels(&pixels, widgets, window_width, window_height);
-    system("cls");
+    update_pixels(&pixels, w, window_width, window_height);
+
     hideCursor();
-
-    int widget_index = 0;
-    // int section_index = 0;
-
-    Widget *curr_widget = get(widgets, widget_index);
-    LinkedList *curr_widget_sections = curr_widget->sections;
-    Section *curr_section = curr_widget_sections->next->value;
 
     int focus_index = 0;
 
-    // Select initial element
-    change_focused_element(&pixels, curr_section, curr_widget, focus_index);
+    Widget *curr_widget = w2;
+    Section *curr_widget_sections = curr_widget->sections;
 
-    // render(pixels, window_width, window_height);
+
+    Section *curr_section = get_next_editable_section(curr_widget_sections);
+
+    printf("Current section: %s\n", curr_section->label);
+    printf("Current state: %d\n", curr_section->state);
+    // Select initial element
+    change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
 
     char key;
     int arrowCode;
@@ -698,8 +950,7 @@ int main(void)
     {
         if (need_to_render)
         {
-            // system("cls");
-
+            printf("Widget id: %zu\n", curr_widget->id);
             render_debug(pixels, window_width, window_height);
             need_to_render = false;
         }
@@ -709,95 +960,95 @@ int main(void)
         switch (key)
         {
         case -32:
-            arrowCode = _getch();
 
-            if (arrowCode == 80)
+            if (curr_section != NULL)
             {
-                // Arrow down
-                int temp_index = focus_index + 1;
-                need_to_render = change_focused_element(&pixels, curr_section, curr_widget, temp_index);
-                if (need_to_render)
-                {
-                    focus_index++;
-                }
-                // if (curr_section->type == LIST)
-                // {
-                //     List *list = curr_section->el;
-                //     if ((size_t)(focus_index) < list->item_count)
-                //     {
-                //         focus_index++;
-                //         need_to_render = true;
-                //     }
-                // }
-                // else
-                // {
-                //     exit_on_error("Section type undefined", __func__, __LINE__);
-                // }
-            }
-            else if (arrowCode == 72)
-            {
-                // Arrow up
-                // Go to correct index
-                int temp_index = focus_index - 1;
+                printf("NOT NULL\n");
+                arrowCode = _getch();
 
-                printf("temp in prev: %d\n", temp_index);
-                need_to_render = change_focused_element(&pixels, curr_section, curr_widget, temp_index);
-                if (need_to_render)
+                if (arrowCode == 80)
                 {
-                    focus_index--;
+                    // Arrow down
+                    int temp_index = focus_index + 1;
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &temp_index, NEXT);
+                    if (need_to_render)
+                    {
+                        focus_index++;
+                    }
                 }
-
-                // if (focus_index > 0)
-                // {
-                //     prev_element(&pixels, curr_widget, focus_index);
-                //     focus_index--;
-                //     need_to_render = true;
-                // }
+                else if (arrowCode == 72)
+                {
+                    // Arrow up
+                    int temp_index = focus_index - 1;
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &temp_index, PREVIOUS);
+                    if (need_to_render)
+                    {
+                        focus_index--;
+                    }
+                }
             }
+
             break;
-        // case 9:
-        //     // Tab
-        //     if (GetKeyState(VK_SHIFT) & 0x8000)
-        //     {
-        //         //  Shift + Tab
-        //         if (widget_index >= 0)
-        //         {
-        //             widget_index++;
-        //             Widget *prev = curr_widget;
-        //             curr_widget = get(widgets, widget_index);
-        //             if (curr_widget->list != NULL)
-        //             {
-        //                 next_widget(&pixels, prev, curr_widget, element_index);
-        //                 element_index = 0;
-        //                 need_to_render = true;
-        //             }
-        //             else
-        //             {
-        //                 curr_widget = prev;
-        //                 widget_index--;
-        //             }
-        //         }
-        //         break;
-        //     }
+        case 9:
+            // Tab
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+            {
+                //  Shift + Tab
+                Section *temp = curr_section;
+                int temp_index = focus_index;
+                curr_section = get_prev_editable_section(temp);
+                printf("Current section: %s\n", curr_section->label);
 
-        //     if (widget_index + 1 < len(widgets))
-        //     {
-        //         widget_index++;
-        //         Widget *prev = curr_widget;
-        //         curr_widget = get(widgets, widget_index);
-        //         if (curr_widget->list != NULL)
-        //         {
-        //             next_widget(&pixels, prev, curr_widget, element_index);
-        //             element_index = 0;
-        //             need_to_render = true;
-        //         }
-        //         else
-        //         {
-        //             curr_widget = prev;
-        //             widget_index--;
-        //         }
-        //     }
-        //     break;
+                printf("curr_section back is NULL: %d\n", curr_section == NULL);
+                if (curr_section != NULL)
+                {
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                    clean_element(&pixels, curr_widget, temp, temp_index);
+                    need_to_render = true;
+                }
+                else
+                {
+                    curr_section = temp;
+                    if (curr_widget->prev != NULL)
+                    {
+                        curr_widget = curr_widget->prev;
+                        curr_section = get_next_editable_section(curr_widget->sections);
+
+                        need_to_render = true;
+                    }
+                }
+                break;
+            }
+
+            Section *temp = curr_section;
+            int temp_index = focus_index;
+            curr_section = get_next_editable_section(temp);
+            printf("curr_section next is NULL: %d\n", curr_section == NULL);
+
+            if (curr_section != NULL)
+            {
+                need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                clean_element(&pixels, curr_widget, temp, temp_index);
+                need_to_render = true;
+            }
+            else
+            {
+                curr_section = temp;
+                if (curr_widget->next != NULL)
+                {
+                    curr_widget = curr_widget->next;
+                    curr_section = get_next_editable_section(curr_widget->sections);
+                    printf("new curr_section next is NULL: %d\n", curr_section == NULL);
+
+                    need_to_render = true;
+                }
+            }
+
+            break;
+        case '\r':
+            need_to_render = action(&pixels, curr_widget, &curr_section, &focus_index, window_width, window_height);
+            printf("Focus index: %d\n", focus_index);
+            break;
         default:
             break;
         }

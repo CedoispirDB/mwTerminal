@@ -34,7 +34,7 @@ Node *add(Node *head, void *value)
 int len(Node *head)
 {
 
-    if(head == NULL) 
+    if (head == NULL)
     {
         return -1;
     }
@@ -52,18 +52,9 @@ int len(Node *head)
     return size;
 }
 
-void exitIfOutOfBounds(Node *head, int index, char *loc)
-{
-    if (index < 0 || index >= len(head))
-    {
-        printf("Index %i out of bounds in %s\n", index, loc);
-        exit(1);
-    }
-}
-
 void *get(Node *head, int index)
 {
-    exitIfOutOfBounds(head, index, "get");
+    EXIT_IF_OUT_OF_BOUNDS(head, index, "get");
 
     Node *current = head;
     int count = 0;
@@ -82,7 +73,7 @@ void *get(Node *head, int index)
 
 Node *getNode(Node *head, int index)
 {
-    exitIfOutOfBounds(head, index, "getNode");
+    EXIT_IF_OUT_OF_BOUNDS(head, index, "getNode");
 
     Node *current = head;
     int count = 0;
@@ -101,7 +92,7 @@ Node *getNode(Node *head, int index)
 
 Node *insert(Node *head, void *value, int index)
 {
-    exitIfOutOfBounds(head, index, "insert");
+    EXIT_IF_OUT_OF_BOUNDS(head, index, "insert");
 
     Node *newNode = createNode();
 
@@ -133,22 +124,28 @@ Node *insert(Node *head, void *value, int index)
     return newNode;
 }
 
-void delete(Node *head, int index)
+void delete(Node **head, int index)
 {
-    exitIfOutOfBounds(head, index, "delete");
-
-    Node *remove = getNode(head, index);
+    EXIT_IF_OUT_OF_BOUNDS(*head, index, "delete");
+    Node *remove = getNode(*head, index);
 
     if (index == 0)
     {
-        Node *nextNode = head->next;
-        head->value = nextNode->value;
-        head->next = nextNode->next;
+        Node *nextNode = (*head)->next;
+        if (nextNode == NULL)
+        {
+            (*head)->value = NULL;
+            (*head)->next = NULL;
+            (*head) = NULL;
+            return;
+        }
+        (*head)->value = nextNode->value;
+        (*head)->next = nextNode->next;
         free(nextNode);
         return;
     }
 
-    Node *prevNode = getNode(head, index - 1);
+    Node *prevNode = getNode(*head, index - 1);
 
     prevNode->next = remove->next;
 
@@ -159,7 +156,7 @@ void freeList(Node *head)
 {
     Node *current = head;
     Node *temp;
-    
+
     while (current != NULL)
     {
         temp = current;
@@ -272,7 +269,7 @@ void ShowBasicCreation()
     printf("Values added to list:\n");
     printValues(head);
     printf("\n");
-    
+
     int index = 1;
     printf("Value inserted at index %i:\n", index);
     insert(head, &(int){10}, index);
@@ -281,7 +278,7 @@ void ShowBasicCreation()
 
     int rmIndex = 3;
     printf("Value deleted at index %i:\n", rmIndex);
-    delete (head, rmIndex);
+    delete (&head, rmIndex);
     printValues(head);
 
     freeList(head);

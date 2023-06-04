@@ -68,6 +68,8 @@ struct Widget
     Section *sections;
     Widget *next;
     Widget *prev;
+    int current_section;
+    Section *last_section;
 };
 
 struct Section
@@ -199,6 +201,8 @@ Widget *allocate_widget(size_t width, size_t height,
     w->id = id;
     w->next = NULL;
     w->prev = NULL;
+    w->current_section = -1;
+    w->last_section = NULL;
 
     return w;
 }
@@ -250,7 +254,6 @@ Section *allocate_section(void *el, section_type type, size_t width, size_t heig
         EXIT_ON_ERROR("Section type undefined");
         break;
     }
-
 
     return s;
 }
@@ -479,14 +482,21 @@ void update_widget(Pixel ***pixels, Widget *curr_widget, size_t window_width, si
     if (window_width % 2 != 0)
     {
         x_limit++;
+        if (x_limit >= window_width + 1)
+        {
+            x_limit--;
+        }
     }
 
     if (window_height % 2 != 0)
     {
         y_limit++;
+        if (y_limit >= window_height + 1)
+        {
+            y_limit--;
+        }
     }
 
-    // printf("x_limit: %zu, y_limit: %zu\n", x_limit, y_limit);
     for (size_t y = y_start; y < y_limit; ++y)
     {
         for (size_t x = x_start; x < x_limit; ++x)
@@ -529,9 +539,8 @@ void update_pixels(Pixel ***pixels, Widget *widgets, size_t window_width, size_t
 
     while (widgets != NULL)
     {
-        // printf("%d\n", current == NULL);
         // printf("width: %zu, height: %zu, pos_x: %zu, pos_y: %zu\n",
-        //        el->width, el->height, el->pos_x, el->pos_y);
+        //        widgets->width, widgets->height, widgets->pos_x, widgets->pos_y);
         update_widget(pixels, widgets, window_width, window_height);
 
         widgets = widgets->next;
@@ -552,6 +561,37 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
         y_clean_end = y_clean_start + 1;
         x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
         x_clean_end = x_clean_start + strlen(get(list->items, focus_index));
+
+        // Clean section pixels
+        for (size_t y = y_clean_start; y < y_clean_end; y++)
+        {
+
+            for (size_t x = x_clean_start; x < x_clean_end; ++x)
+            {
+                ((*pixels)[y][x]).focused = UNFOCUSED;
+            }
+        }
+    }
+    else if (curr_section->type == INPUT)
+    {
+        y_clean_start = (curr_widget->pos_y + curr_section->pos_y) + 1;
+        y_clean_end = y_clean_start + curr_section->height;
+        x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
+        x_clean_end = x_clean_start + curr_section->width;
+
+        // Set new focused pixels
+        for (size_t y = y_clean_start; y < y_clean_end; y++)
+        {
+            for (size_t x = x_clean_start; x < x_clean_end; ++x)
+            {
+                Pixel *temp = &((*pixels)[y][x]);
+
+                if ((y == y_clean_start || y == y_clean_end - 1) || (x == x_clean_start || x == x_clean_end - 1))
+                {
+                    temp->focused = UNFOCUSED;
+                }
+            }
+        }
     }
     else
     {
@@ -562,16 +602,6 @@ void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, 
 
     // printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
     //        x_clean_start, x_clean_end, y_clean_start, y_clean_end);
-
-    // Clean section pixels
-    for (size_t y = y_clean_start; y < y_clean_end; y++)
-    {
-
-        for (size_t x = x_clean_start; x < x_clean_end; ++x)
-        {
-            ((*pixels)[y][x]).focused = UNFOCUSED;
-        }
-    }
 }
 
 void clean_section(Pixel ***pixels, Widget *curr_widget, Section *curr_section)
@@ -600,10 +630,12 @@ void clean_section(Pixel ***pixels, Widget *curr_widget, Section *curr_section)
 bool change_focused_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section,
                             int *focus_index_ptr, int dir)
 {
-    printf("Current section: %s\n", curr_section->label);
+    // printf("Current section: %s\n", curr_section->label);
 
     // printf("focus_index: %d, pos_x: %zu, pos_y: %zu\n",
     //        *focus_index_ptr, curr_section->pos_x, curr_section->pos_y);
+
+    // Get last section before changing widget
 
     int focus_index = *focus_index_ptr;
 
@@ -644,6 +676,36 @@ bool change_focused_element(Pixel ***pixels, Widget *curr_widget, Section *curr_
         {
             clean_element(pixels, curr_widget, curr_section, focus_index);
         }
+
+        // Set new focused pixels
+        for (size_t y = y_new_start; y < y_new_end; y++)
+        {
+            for (size_t x = x_new_start; x < x_new_end; ++x)
+            {
+                ((*pixels)[y][x]).focused = FOCUSED;
+            }
+        }
+    }
+    else if (curr_section->type == INPUT)
+    {
+        y_new_start = (curr_widget->pos_y + curr_section->pos_y) + 1;
+        y_new_end = y_new_start + curr_section->height;
+        x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
+        x_new_end = x_new_start + curr_section->width;
+
+        // Set new focused pixels
+        for (size_t y = y_new_start; y < y_new_end; y++)
+        {
+            for (size_t x = x_new_start; x < x_new_end; ++x)
+            {
+                Pixel *temp = &((*pixels)[y][x]);
+
+                if ((y == y_new_start || y == y_new_end - 1) || (x == x_new_start || x == x_new_end - 1))
+                {
+                    temp->focused = FOCUSED;
+                }
+            }
+        }
     }
     else
     {
@@ -653,39 +715,38 @@ bool change_focused_element(Pixel ***pixels, Widget *curr_widget, Section *curr_
     // printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
     //        x_new_start, x_new_end, y_new_start, y_new_end);
 
-    // Set new focused pixels
-    for (size_t y = y_new_start; y < y_new_end; y++)
-    {
-        for (size_t x = x_new_start; x < x_new_end; ++x)
-        {
-            ((*pixels)[y][x]).focused = FOCUSED;
-        }
-    }
-
     return true;
 }
 
-Section *get_next_editable_section(Section *curr_section)
+Section *get_next_editable_section(Widget *curr_widget, Section *curr_section)
 {
-
+    // printf("NEXT\n-------------------------------------------------------\n");
+    // printf("For widget id: %d\n", curr_widget->id);
     Section *s = curr_section;
+
     Section *temp;
     while (s != NULL)
     {
         temp = s;
-        if (temp->state == EDITABLE && temp->id != curr_section->id)
+        // printf("Section label: %s, Section id: %d, Current Section: %d\n", s->label, s->id, curr_widget->current_section);
+        if (temp->state == EDITABLE && (s->id != curr_widget->current_section))
         {
+            curr_widget->current_section = s->id;
+            // printf("-------------------------------------------------------\nEND_NEXT\n");
             return temp;
         }
 
         s = s->next;
     }
 
+    // printf("-------------------------------------------------------\nEND_NEXT\n");
     return NULL;
 }
 
-Section *get_prev_editable_section(Section *curr_section)
+Section *get_prev_editable_section(Widget *curr_widget, Section *curr_section)
 {
+    // printf("PREV\n-------------------------------------------------------\n");
+    // printf("For widget id: %d\n", curr_widget->id);
 
     Section *s = curr_section;
     Section *temp;
@@ -694,8 +755,11 @@ Section *get_prev_editable_section(Section *curr_section)
     {
         temp = s;
 
-        if (temp->state == EDITABLE && temp->id != curr_section->id)
+        // printf("Section label: %s, Section id: %d, Current Section: %d\n", s->label, s->id, curr_widget->current_section);
+        if (temp->state == EDITABLE && (s->id != curr_widget->current_section))
         {
+            curr_widget->current_section = s->id;
+            // printf("-------------------------------------------------------\nEND_PREV\n");
 
             return temp;
         }
@@ -703,6 +767,7 @@ Section *get_prev_editable_section(Section *curr_section)
         s = s->prev;
     }
 
+    // printf("-------------------------------------------------------\nEND_PREV\n");
     return NULL;
 }
 
@@ -858,10 +923,10 @@ int main(void)
     int window_width, window_height;
     Pixel **pixels;
     create_window(&pixels, &window_width, &window_height);
-    // printf("Window size: %d window_width x %d window_height\n", window_width, window_height);
+    printf("Window size: %d window_width x %d window_height\n", window_width, window_height);
 
     size_t widget_width = (size_t)window_width / 2;
-    size_t widget_height = (size_t)window_height / 2;
+    size_t widget_height = (size_t)window_height;
 
     int gap = 2;
     int todo_pos_x = (widget_width - todo_min_width - done_min_width - gap) / 2;
@@ -914,16 +979,16 @@ int main(void)
     Widget *w2 = allocate_widget(widget_width, widget_height,
                                  widget_width, 0,
                                  1, input_section);
-    Widget *w3 = allocate_widget(widget_width, widget_height,
-                                 0, widget_height,
-                                 2, NULL);
-    Widget *w4 = allocate_widget(widget_width, widget_height,
-                                 widget_width, widget_height,
-                                 3, NULL);
+    // Widget *w3 = allocate_widget(widget_width, widget_height,
+    //                              0, widget_height,
+    //                              2, NULL);
+    // Widget *w4 = allocate_widget(widget_width, widget_height,
+    //                              widget_width, widget_height,
+    //                              3, NULL);
 
     link_widgets(w, w2);
-    link_widgets(w, w3);
-    link_widgets(w, w4);
+    // link_widgets(w, w3);
+    // link_widgets(w, w4);
 
     update_pixels(&pixels, w, window_width, window_height);
 
@@ -931,14 +996,12 @@ int main(void)
 
     int focus_index = 0;
 
-    Widget *curr_widget = w2;
+    Widget *curr_widget = w;
     Section *curr_widget_sections = curr_widget->sections;
 
+    Section *curr_section = get_next_editable_section(curr_widget, curr_widget_sections);
 
-    Section *curr_section = get_next_editable_section(curr_widget_sections);
-
-    printf("Current section: %s\n", curr_section->label);
-    printf("Current state: %d\n", curr_section->state);
+    // printf("Current section: %s\n", curr_section->label);
     // Select initial element
     change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
 
@@ -950,8 +1013,12 @@ int main(void)
     {
         if (need_to_render)
         {
-            printf("Widget id: %zu\n", curr_widget->id);
-            render_debug(pixels, window_width, window_height);
+            // printf("------------------------------------\n");
+            // printf("Widget id: %zu\n", curr_widget->id);
+            // printf("Current section label: %s, id: %d\n", curr_section->label, curr_section->id);
+            // printf("Widget current section: %d\n", curr_widget->current_section);
+            // printf("------------------------------------\n");
+            render(pixels, window_width, window_height);
             need_to_render = false;
         }
 
@@ -963,7 +1030,6 @@ int main(void)
 
             if (curr_section != NULL)
             {
-                printf("NOT NULL\n");
                 arrowCode = _getch();
 
                 if (arrowCode == 80)
@@ -996,10 +1062,8 @@ int main(void)
                 //  Shift + Tab
                 Section *temp = curr_section;
                 int temp_index = focus_index;
-                curr_section = get_prev_editable_section(temp);
-                printf("Current section: %s\n", curr_section->label);
+                curr_section = get_prev_editable_section(curr_widget, temp);
 
-                printf("curr_section back is NULL: %d\n", curr_section == NULL);
                 if (curr_section != NULL)
                 {
                     need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
@@ -1009,12 +1073,27 @@ int main(void)
                 else
                 {
                     curr_section = temp;
+
                     if (curr_widget->prev != NULL)
                     {
-                        curr_widget = curr_widget->prev;
-                        curr_section = get_next_editable_section(curr_widget->sections);
+                        // Clean previous section before moving to next widget
+                        clean_element(&pixels, curr_widget, curr_section, focus_index);
 
-                        need_to_render = true;
+                        curr_widget->current_section--;
+
+                        curr_widget = curr_widget->prev;
+                        curr_section = get_prev_editable_section(curr_widget, curr_widget->last_section);
+
+                        if (curr_section == NULL)
+                        {
+                            EXIT_ON_ERROR("Current section is NULL when trying to go to previous widget");
+                        }
+
+                        // printf("prev current widget id: %d\n", curr_widget->id);
+                        // printf("prev current widget current section: %d\n", curr_widget->current_section);
+                        // printf("prev section for next widget: %s\n", curr_section->label);
+
+                        need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
                     }
                 }
                 break;
@@ -1022,8 +1101,8 @@ int main(void)
 
             Section *temp = curr_section;
             int temp_index = focus_index;
-            curr_section = get_next_editable_section(temp);
-            printf("curr_section next is NULL: %d\n", curr_section == NULL);
+            curr_section = get_next_editable_section(curr_widget, temp);
+            curr_widget->last_section = curr_section;
 
             if (curr_section != NULL)
             {
@@ -1034,13 +1113,27 @@ int main(void)
             else
             {
                 curr_section = temp;
+                curr_widget->last_section = curr_section;
+
                 if (curr_widget->next != NULL)
                 {
-                    curr_widget = curr_widget->next;
-                    curr_section = get_next_editable_section(curr_widget->sections);
-                    printf("new curr_section next is NULL: %d\n", curr_section == NULL);
+                    // Clean previous section before moving to next widget
+                    clean_element(&pixels, curr_widget, curr_section, focus_index);
 
-                    need_to_render = true;
+                    curr_widget->current_section--;
+
+                    curr_widget = curr_widget->next;
+                    curr_section = get_next_editable_section(curr_widget, curr_widget->sections);
+
+                    if (curr_section == NULL)
+                    {
+                        EXIT_ON_ERROR("Current section is NULL when trying to go to next widget");
+                    }
+
+                    // printf("New current widget id: %d\n", curr_widget->id);
+                    // printf("New current widget current section: %d\n", curr_widget->current_section);
+                    // printf("New section for next widget: %s\n", curr_section->label);
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
                 }
             }
 

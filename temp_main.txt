@@ -1,0 +1,285 @@
+int main2(void)
+{
+    // Lists creation
+    char **todo_items;
+    size_t todo_items_len = 3;
+    todo_items = (char **)malloc(todo_items_len * sizeof(char *));
+    todo_items[0] = createStr("Buy a bread");
+    todo_items[1] = createStr("Eat");
+    todo_items[2] = createStr("Drink code");
+
+    LinkedList *todo = convertArray(todo_items, todo_items_len);
+    size_t todo_min_width = calculate_min_width(todo) + 6;
+
+    char **done_items;
+    size_t done_items_len = 3;
+    done_items = (char **)malloc(done_items_len * sizeof(char *));
+    done_items[0] = createStr("sleep");
+    done_items[1] = createStr("high");
+    done_items[2] = createStr("low");
+
+    LinkedList *done = convertArray(done_items, done_items_len);
+    size_t done_min_width = calculate_min_width(done) + 6;
+
+    // Create window
+    int window_width, window_height;
+    Pixel **pixels;
+    create_window(&pixels, &window_width, &window_height);
+    printf("Window size: %d window_width x %d window_height\n", window_width, window_height);
+
+    size_t widget_width = (size_t)window_width / 2;
+    size_t widget_height = (size_t)window_height;
+
+    int gap = 2;
+    int todo_pos_x = (widget_width - todo_min_width - done_min_width - gap) / 2;
+    int done_pos_x = todo_pos_x + todo_min_width + gap;
+
+    int todo_label_name_len = 4;
+    int todo_label_d = (todo_min_width - todo_label_name_len) / 2;
+    int todo_label_pos_x = todo_label_d + todo_pos_x;
+
+    int done_label_name_len = 5;
+    int done_label_d = (done_min_width - done_label_name_len) / 2;
+    int done_label_pos_x = todo_label_pos_x + todo_label_name_len + todo_label_d + gap + done_label_d;
+
+    // printf("todo label pos: %d, done label pos: %d\n", todo_label_pos_x, done_label_pos_x);
+    // printf("min width done: %zu\n", done_min_width);
+
+    // -------------------------
+    // -   Create todo widget  -
+    // -------------------------
+
+    // Create todo list section
+    List *todo_list = allocate_list(todo, todo_min_width, CHECK_BOX, UNCHECKED, NULL);
+    Section *todo_section = allocate_section(todo_list, LIST, todo_min_width, todo_items_len, todo_pos_x, 1, 0, "TODO_LIST");
+
+    // Create todo label section
+    Label *todo_label = allocate_label("TODO");
+    Section *todo_label_section = allocate_section(todo_label, LABEL, todo_label_name_len, 1, todo_label_pos_x, 0, 1, "TODO_LABEL");
+
+    // Create done widget
+    // Create done list section
+    List *done_list = allocate_list(done, done_min_width, CHECK_BOX, CHECKED, todo_section);
+    Section *done_section = allocate_section(done_list, LIST, done_min_width, done_items_len, done_pos_x, 1, 2, "DONE_LIST");
+    todo_list->target = done_section;
+
+    // Create done label section
+    Label *done_label = allocate_label(" DONE");
+    Section *done_label_section = allocate_section(done_label, LABEL, done_label_name_len, 1, done_label_pos_x, 0, 3, "DONE_LABEL");
+
+    // Create Input section
+    Input *input = allocate_input();
+    Section *input_section = allocate_section(input, INPUT, 30, 3, 10, 3, 0, "INPUT_BOX");
+    // Link sections together
+    link_sections(todo_label_section, todo_section);
+    link_sections(todo_label_section, done_label_section);
+    link_sections(todo_label_section, done_section);
+
+    Widget *w = allocate_widget(widget_width, widget_height,
+                                0, 0,
+                                0, todo_label_section);
+    Widget *w2 = allocate_widget(widget_width, widget_height,
+                                 widget_width, 0,
+                                 1, input_section);
+    // Widget *w3 = allocate_widget(widget_width, widget_height,
+    //                              0, widget_height,
+    //                              2, NULL);
+    // Widget *w4 = allocate_widget(widget_width, widget_height,
+    //                              widget_width, widget_height,
+    //                              3, NULL);
+
+    link_widgets(w, w2);
+    // link_widgets(w, w3);
+    // link_widgets(w, w4);
+
+    update_pixels(&pixels, w, window_width, window_height);
+
+    hideCursor();
+
+    int focus_index = 0;
+
+    Widget *curr_widget = w;
+    Section *curr_widget_sections = curr_widget->sections;
+
+    Section *curr_section = get_next_editable_section(curr_widget, curr_widget_sections);
+
+    // printf("Current section: %s\n", curr_section->label);
+    // Select initial element
+    change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+
+    char key;
+    int arrowCode;
+    bool need_to_render = true;
+
+    while (key != 'q')
+    {
+        if (need_to_render)
+        {
+            // printf("------------------------------------\n");
+            // printf("Widget id: %zu\n", curr_widget->id);
+            // printf("Current section label: %s, id: %d\n", curr_section->label, curr_section->id);
+            // printf("Widget current section: %d\n", curr_widget->current_section);
+            // printf("------------------------------------\n");
+            render(pixels, window_width, window_height);
+            need_to_render = false;
+        }
+
+        key = _getch();
+
+        // Handle typing
+        if (curr_section->state == EDITABLE && curr_section->type == INPUT)
+        {
+            need_to_render = type(&pixels, curr_widget, curr_section, key);
+        }
+
+        //  Handle inputs
+        switch (key)
+        {
+        case -32:
+
+            if (curr_section != NULL)
+            {
+                arrowCode = _getch();
+
+                if (arrowCode == 80)
+                {
+                    // Arrow down
+                    int temp_index = focus_index + 1;
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &temp_index, NEXT);
+                    if (need_to_render)
+                    {
+                        focus_index++;
+                    }
+                }
+                else if (arrowCode == 72)
+                {
+                    // Arrow up
+                    int temp_index = focus_index - 1;
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &temp_index, PREVIOUS);
+                    if (need_to_render)
+                    {
+                        focus_index--;
+                    }
+                }
+            }
+
+            break;
+        case 9:
+            // Tab
+            if (GetKeyState(VK_SHIFT) & 0x8000)
+            {
+                //  Shift + Tab
+                Section *temp = curr_section;
+                int temp_index = focus_index;
+                curr_section = get_prev_editable_section(curr_widget, temp);
+
+                if (curr_section != NULL)
+                {
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                    clean_element(&pixels, curr_widget, temp, temp_index);
+                    need_to_render = true;
+                }
+                else
+                {
+                    curr_section = temp;
+
+                    if (curr_widget->prev != NULL)
+                    {
+                        // Clean previous section before moving to next widget
+                        clean_element(&pixels, curr_widget, curr_section, focus_index);
+
+                        curr_widget->current_section--;
+
+                        curr_widget = curr_widget->prev;
+                        curr_section = get_prev_editable_section(curr_widget, curr_widget->last_section);
+
+                        if (curr_section == NULL)
+                        {
+                            EXIT_ON_ERROR("Current section is NULL when trying to go to previous widget");
+                        }
+
+                        // printf("prev current widget id: %d\n", curr_widget->id);
+                        // printf("prev current widget current section: %d\n", curr_widget->current_section);
+                        // printf("prev section for next widget: %s\n", curr_section->label);
+
+                        need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                    }
+                }
+                break;
+            }
+
+            Section *temp = curr_section;
+            int temp_index = focus_index;
+            curr_section = get_next_editable_section(curr_widget, temp);
+            curr_widget->last_section = curr_section;
+
+            if (curr_section != NULL)
+            {
+                need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                clean_element(&pixels, curr_widget, temp, temp_index);
+                need_to_render = true;
+            }
+            else
+            {
+                curr_section = temp;
+                curr_widget->last_section = curr_section;
+
+                if (curr_widget->next != NULL)
+                {
+                    // Clean previous section before moving to next widget
+                    clean_element(&pixels, curr_widget, curr_section, focus_index);
+
+                    curr_widget->current_section--;
+
+                    curr_widget = curr_widget->next;
+                    curr_section = get_next_editable_section(curr_widget, curr_widget->sections);
+
+                    if (curr_section == NULL)
+                    {
+                        EXIT_ON_ERROR("Current section is NULL when trying to go to next widget");
+                    }
+
+                    // printf("New current widget id: %d\n", curr_widget->id);
+                    // printf("New current widget current section: %d\n", curr_widget->current_section);
+                    // printf("New section for next widget: %s\n", curr_section->label);
+                    need_to_render = change_focused_element(&pixels, curr_widget, curr_section, &focus_index, NONE);
+                }
+            }
+
+            break;
+        case '\r':
+            if (curr_section->type != INPUT)
+            {
+                need_to_render = action(&pixels, curr_widget, &curr_section, &focus_index, window_width, window_height);
+            };
+            break;
+        default:
+            break;
+        }
+    }
+
+    // Free the dynamically allocated memory
+
+    for (size_t i = 0; i < (size_t)window_height; i++)
+    {
+        free(pixels[i]);
+    }
+    free(pixels);
+
+    for (size_t i = 0; i < todo_items_len; i++)
+    {
+        free(todo_items[i]);
+    }
+    free(todo_items);
+
+    for (size_t i = 0; i < done_items_len; i++)
+    {
+        free(done_items[i]);
+    }
+    free(done_items);
+
+    freeList(todo);
+    freeList(done);
+
+    return 0;
+}

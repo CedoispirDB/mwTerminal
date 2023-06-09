@@ -38,7 +38,6 @@ Person create_person(char *name, int age, Dog dog)
 // {
 //     p.dog.name = new_name;
 // }
-
 void print_dog(Dog d)
 {
     printf("Dog Name: %s\n", d.name);

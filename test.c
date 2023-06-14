@@ -165,14 +165,14 @@
 
 int main(void)
 {
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD coord;
-    coord.X = 1; // Starting X position
-    coord.Y = 1; // Starting Y position
-    WORD attribute = FOREGROUND_RED;
-    DWORD written;
+    // HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    // COORD coord;
+    // coord.X = 1; // Starting X position
+    // coord.Y = 1; // Starting Y position
+    // WORD attribute = FOREGROUND_RED;
+    // DWORD written;
 
-    FillConsoleOutputAttribute(hConsole, attribute, 1, coord, &written);
+    // FillConsoleOutputAttribute(hConsole, attribute, 1, coord, &written);
     // WORD foreground, background;
     // getCurrentColors(&foreground, &background);
 
@@ -292,11 +292,11 @@ int main(void)
     // DWORD numberOfCharsWritten;
 
     // FillConsoleOutputAttribute(hConsole, attribute, numCellsToFill, coord, &numberOfCharsWritten);
-    // HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    // COORD coord = {0, 0};
-    // DWORD numberOfCharsWritten;
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    COORD coord = {0, 0};
+    DWORD numberOfCharsWritten;
 
-    // FillConsoleOutputCharacter(hConsole, 'X', 10, coord, &numberOfCharsWritten);
+    FillConsoleOutputCharacter(hConsole, 'X', 10, coord, &numberOfCharsWritten);
 
     // printf("%lu\n", numberOfCharsWritten);
     // HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);

@@ -4,6 +4,8 @@
 #include <windows.h>
 #include "./utils/linkedList.h"
 
+#define ARRAY_LENGTH(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 #define EXIT_ON_ERROR(message)                                                            \
     do                                                                                    \
     {                                                                                     \
@@ -85,6 +87,7 @@ struct Window
     Window *prev;
     Pixel **pixels;
     Widget *widgets;
+    Widget *focused_widget;
 };
 
 struct Widget
@@ -96,9 +99,8 @@ struct Widget
     size_t pos_x;
     size_t pos_y;
     size_t id;
-    int current_section;
     Section *sections;
-    Section *last_section;
+    Section *focused_section;
     Widget *next;
     Widget *prev;
 };
@@ -121,10 +123,11 @@ struct Section
 typedef struct List
 {
     Item *items;
-    size_t item_count;
+    int item_count;
     Section *target;
     bool checked;
     list_type type;
+    int item_index;
 } List;
 
 typedef struct Label
@@ -222,6 +225,7 @@ Window create_window(const char *title, size_t id)
     Pixel **pixels = initialize2DArray(width, height);
     w.pixels = pixels;
     w.widgets = NULL;
+    w.focused_widget = NULL;
 
     return w;
 }
@@ -240,8 +244,7 @@ Widget create_widget(char border_char, size_t border_size, size_t width, size_t 
     w.pos_y = pos_y;
     w.id = id;
     w.sections = sections;
-    w.current_section = -1;
-    w.last_section = NULL;
+    w.focused_section = NULL;
     w.next = NULL;
     w.prev = NULL;
 
@@ -281,14 +284,15 @@ Section create_section(void *el, section_type type, size_t width, size_t heigth,
     return s;
 }
 
-List create_list(Item *items, list_type type, bool checked, Section *target)
+List create_list(Item *items, size_t item_count, list_type type, bool checked, Section *target)
 {
     List list;
     list.items = items;
-    list.item_count = 0;
+    list.item_count = item_count;
     list.target = target;
     list.type = type;
     list.checked = checked;
+    list.item_index = 0;
 
     if (type == CHECK_BOX)
     {
@@ -422,8 +426,6 @@ size_t calculate_min_width(LinkedList *list)
     return min_width;
 }
 
-
-
 void update_sections(Pixel ***pixels, Widget *w)
 {
     if (w->sections == NULL)
@@ -441,18 +443,10 @@ void update_sections(Pixel ***pixels, Widget *w)
 
     while (s != NULL)
     {
-        printf("s width: %zu, s height: %zu, s pos_x: %zu, s pos_y: %zu\n",
-               s->width, s->height, s->pos_x, s->pos_y);
-        printf("w width: %zu, w height: %zu, w pos_x: %zu, w pos_y: %zu, border_size: %zu\n",
-               w->width, w->height, w->pos_x, w->pos_y, w->border_size);
-        // printf("Section type: %d\n", s->type);
         size_t y_start = w->pos_y + s->pos_y + w->border_size;
         size_t x_start = w->pos_x + s->pos_x + w->border_size;
         size_t y_limit = y_start + s->height;
         size_t x_limit = x_start + s->width;
-
-        printf("x_start: %zu, y_start: %zu, x_limit: %zu, y_limit: %zu\n",
-               x_start, y_start, x_limit, y_limit);
 
         for (size_t y = y_start; y < y_limit; ++y)
         {
@@ -464,7 +458,6 @@ void update_sections(Pixel ***pixels, Widget *w)
             {
                 if (s->type == LIST)
                 {
-                    printf("HERE\n");
                     List *list = s->el;
                     Item *items_list = list->items;
 
@@ -798,30 +791,202 @@ void update_window(Window window)
 //     return true;
 // }
 
-// Section *get_next_editable_section(Widget *curr_widget, Section *curr_section)
-// {
-//     // printf("NEXT\n-------------------------------------------------------\n");
-//     // printf("For widget id: %d\n", curr_widget->id);
-//     Section *s = curr_section;
+Item *get_item(Item *items, int index)
+{
+    Item *curr = items;
+    int count = 0;
 
-//     Section *temp;
-//     while (s != NULL)
-//     {
-//         temp = s;
-//         // printf("Section label: %s, Section id: %d, Current Section: %d\n", s->label, s->id, curr_widget->current_section);
-//         if (temp->state == EDITABLE && (s->id != curr_widget->current_section))
-//         {
-//             curr_widget->current_section = s->id;
-//             // printf("-------------------------------------------------------\nEND_NEXT\n");
-//             return temp;
-//         }
+    while (curr != NULL)
+    {
+        if (count == index)
+        {
+            return curr;
+        }
+        curr = curr->next;
+        count++;
+    }
 
-//         s = s->next;
-//     }
+    return NULL;
+}
 
-//     // printf("-------------------------------------------------------\nEND_NEXT\n");
-//     return NULL;
-// }
+void unfocus_item(Window w, Section *focused_section, int dir)
+{
+    Widget *focused_widget = w.focused_widget;
+
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
+
+    if (focused_section == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_section is NULL for widget id=%zu", focused_widget->id);
+    }
+
+    List *list = (List *)(focused_section->el);
+
+    int index = list->item_index + dir;
+    if (list->item_index < 0 || list->item_index >= list->item_count)
+    {
+        // EXIT_ON_ERROR_PAR("trying to clean outside the bounds: item_count=%d, index=%d", list->item_count, index);
+        return;
+    }
+
+    Item *focused_item = get_item(list->items, index);
+
+    if (focused_item == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_item is NULL for section id=%zu", focused_section->id);
+    }
+
+    size_t yi = focused_widget->pos_y + focused_section->pos_y + focused_widget->border_size + index;
+    size_t yf = yi + 1;
+    size_t xi = focused_widget->pos_x + focused_section->pos_x + focused_widget->border_size;
+    size_t xf = xi + strlen(focused_item->text);
+
+    // printf("xi: %zu, xf: %zu, yi: %zu, yf: %zu\n", xi, xf, yi, yf);
+    for (size_t y = yi; y < yf; ++y)
+    {
+        for (size_t x = xi; x < xf; ++x)
+        {
+            (w.pixels)[y][x].focused = UNFOCUSED;
+            // printf("(%zu, %zu) = %d\n", x, y, ((w.pixels)[y][x]).focused);
+        }
+    }
+}
+
+void unfocus_section(Window w, Section *section)
+{
+    if (section->type == LIST)
+    {
+
+        unfocus_item(w, section, 0);
+    }
+    else
+    {
+        EXIT_ON_ERROR("Section type undefined");
+    }
+}
+
+bool focus_item(Window w, Section *focused_section)
+{
+    Widget *focused_widget = w.focused_widget;
+
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
+
+    if (focused_section == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_section is NULL for widget id=%zu", focused_widget->id);
+    }
+
+    List *list = (List *)(focused_section->el);
+
+    if (list->item_index < 0 || list->item_index >= list->item_count)
+    {
+        return false;
+    }
+
+    Item *focused_item = get_item(list->items, list->item_index);
+
+    if (focused_item == NULL)
+    {
+        printf("item_index: %d, item_count: %d\n", list->item_index, list->item_count);
+        EXIT_ON_ERROR_PAR("focused_item is NULL for section id=%zu", focused_section->id);
+    }
+
+    size_t yi = focused_widget->pos_y + focused_section->pos_y + focused_widget->border_size + list->item_index;
+    size_t yf = yi + 1;
+    size_t xi = focused_widget->pos_x + focused_section->pos_x + focused_widget->border_size;
+    size_t xf = xi + strlen(focused_item->text);
+
+    // printf("xi: %zu, xf: %zu, yi: %zu, yf: %zu\n", xi, xf, yi, yf);
+    for (size_t y = yi; y < yf; ++y)
+    {
+        for (size_t x = xi; x < xf; ++x)
+        {
+            (w.pixels)[y][x].focused = FOCUSED;
+            // printf("(%zu, %zu) = %d\n", x, y, ((w.pixels)[y][x]).focused);
+        }
+    }
+
+    return true;
+}
+
+bool focus_section(Window w)
+{
+    Widget *focused_widget = w.focused_widget;
+
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
+
+    Section *focused_section = focused_widget->focused_section;
+
+    if (focused_section == NULL)
+    {
+        EXIT_ON_ERROR("Trying to focus on a NULL section");
+    }
+
+    if (focused_section->type == LIST)
+    {
+
+        return focus_item(w, focused_section);
+    }
+    else
+    {
+        EXIT_ON_ERROR("Section type undefined");
+    }
+
+    return false;
+}
+
+Section *get_next_editable_section(Window w)
+{
+    Widget *focused_widget = w.focused_widget;
+
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
+
+    Section *s = focused_widget->sections;
+
+    if (s == NULL)
+    {
+        // No section on widget
+        return NULL;
+    }
+
+    Section *focused_section = focused_widget->focused_section;
+
+    if (focused_section != NULL)
+    {
+        s = focused_section->next;
+        if (s == NULL)
+        {
+            return s;
+        }
+    }
+
+    Section *temp;
+    while (s != NULL)
+    {
+        temp = s;
+        if (temp->state == EDITABLE)
+        {
+            focused_widget->focused_section = temp;
+            return temp;
+        }
+
+        s = s->next;
+    }
+
+    return NULL;
+}
 
 // Section *get_prev_editable_section(Widget *curr_widget, Section *curr_section)
 // {
@@ -982,15 +1147,17 @@ void update_window(Window window)
 //     return false;
 // }
 
-void render_debug(Pixel **pixels, size_t window_width, size_t window_height)
+void render_debug(Window w)
 {
     printf("DEBUG_STATE: %d\n", DEBUG_STATE);
+
     DEBUG_STATE++;
-    for (size_t y = 0; y < (size_t)window_height; y++)
+
+    for (size_t y = 0; y < w.height; y++)
     {
-        for (size_t x = 0; x < (size_t)window_width; x++)
+        for (size_t x = 0; x < w.width; x++)
         {
-            Pixel curr_pixel = pixels[y][x];
+            Pixel curr_pixel = w.pixels[y][x];
 
             if (curr_pixel.focused)
             {
@@ -1009,10 +1176,9 @@ void render_debug(Pixel **pixels, size_t window_width, size_t window_height)
     }
 }
 
-void render(Window w)
+void load_pixels(Window w)
 {
-    // system("cls");
-
+    system("cls");
     for (size_t y = 0; y < w.height; y++)
     {
         for (size_t x = 0; x < w.width; x++)
@@ -1020,18 +1186,119 @@ void render(Window w)
             Pixel curr_pixel = w.pixels[y][x];
 
             printf("%c", curr_pixel.pixel);
+        }
+    }
+}
 
+void render(Window w)
+{
+    // system("cls");
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    COORD paint_coord;
+    DWORD paint_written;
+
+    COORD coord;
+    DWORD written;
+
+    for (size_t y = 0; y < w.height; y++)
+    {
+        for (size_t x = 0; x < w.width; x++)
+        {
+            Pixel curr_pixel = w.pixels[y][x];
+
+            // printf("%c", curr_pixel.pixel);
+
+            coord.X = x;
+            coord.Y = y;
+
+            FillConsoleOutputCharacter(hConsole, curr_pixel.pixel, 1, coord, &written);
+
+            paint_coord.X = x;
+            paint_coord.Y = y;
             if (curr_pixel.focused)
             {
-                HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-                COORD coord;
-                coord.X = x; // Starting X position
-                coord.Y = y; // Starting Y position
-                WORD attribute = 0 | BACKGROUND_INTENSITY | BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
-                DWORD written;
 
-                FillConsoleOutputAttribute(hConsole, attribute, 1, coord, &written);
+                WORD attribute = 0 | BACKGROUND_INTENSITY | BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
+                FillConsoleOutputAttribute(hConsole, attribute, 1, paint_coord, &paint_written);
             }
+            else
+            {
+                WORD attribute = 15;
+                FillConsoleOutputAttribute(hConsole, attribute, 1, paint_coord, &paint_written);
+            }
+        }
+    }
+}
+
+void handle_input(Window window)
+{
+    char key;
+    int arrowCode;
+    bool need_to_render = true;
+    while (key != 'q')
+    {
+        if (need_to_render)
+        {
+            render(window);
+            need_to_render = false;
+        }
+
+        key = _getch();
+
+        switch (key)
+        {
+        case 'r':
+            render(window);
+            break;
+        case 'd':
+            render_debug(window);
+            break;
+        case -32:
+            // Arrows
+
+            arrowCode = _getch();
+
+            Section *focused_section = window.focused_widget->focused_section;
+
+            if (focused_section->type == LIST)
+            {
+                List *list = (List *)focused_section->el;
+
+                if (arrowCode == 80)
+                {
+                    // Arrow down
+                    list->item_index++;
+                    unfocus_item(window, focused_section, -1);
+                    need_to_render = focus_item(window, focused_section);
+
+                    if (!need_to_render)
+                    {
+                        list->item_index--;
+                    }
+                }
+                else if (arrowCode == 72)
+                {
+                    // Arrow up
+                    list->item_index--;
+                    unfocus_item(window, focused_section, 1);
+                    need_to_render = focus_item(window, focused_section);
+                    if (!need_to_render)
+                    {
+                        list->item_index++;
+                    }
+                }
+            }
+            break;
+        case 9:
+            // TAB
+            {
+                Section *temp = window.focused_widget->focused_section;
+                unfocus_section(window, temp);
+            }
+            window.focused_widget->focused_section = get_next_editable_section(window);
+            need_to_render = focus_section(window);
+            break;
         }
     }
 }
@@ -1040,37 +1307,55 @@ int main(void)
 {
     // Lists creation
     char *todo_array[] = {"Buy a bread", "Eat", "Drink code"};
-    size_t todo_array_len = sizeof(todo_array) / sizeof(todo_array[0]);
-    
+    size_t todo_array_len = ARRAY_LENGTH(todo_array);
+
     char *done_array[] = {"Sleep", "Code"};
-    size_t done_array_len = sizeof(done_array) / sizeof(done_array[0]);
-    (void)done_array_len;
+    size_t done_array_len = ARRAY_LENGTH(done_array);
+
     // Create main window
     Window window = create_window("Main", 0);
-    
+    // Load initial pixels
+    load_pixels(window);
+
     Item *todo_items = create_items(todo_array, todo_array_len);
+
     Label todo_label = create_label("TODO");
-    Section todo_label_section = create_section(&todo_label, LABEL, 20, 1, 0, 0, 0, "TODO_LABEL");
-    List todo_list = create_list(todo_items, CHECK_BOX, false, NULL);
-    Section todo_list_section = create_section(&todo_list, LIST, 10, 3, 0, 1, 0, "TODO_LIST");
+    Section todo_label_section = create_section(&todo_label, LABEL, 20, 1, 5, 0, 0, "TODO_LABEL");
+    List todo_list = create_list(todo_items, todo_array_len, CHECK_BOX, false, NULL);
+    Section todo_list_section = create_section(&todo_list, LIST, 1, 1, 5, 1, 0, "TODO_LIST");
     link_sections(&todo_label_section, &todo_list_section);
-    
+
+    Item *done_items = create_items(done_array, done_array_len);
+    Label done_label = create_label("DONE");
+    Section done_label_section = create_section(&done_label, LABEL, 20, 1, 30, 0, 0, "DONE_LABEL");
+    List done_list = create_list(done_items, done_array_len, CHECK_BOX, true, NULL);
+    Section done_list_section = create_section(&done_list, LIST, 1, 1, 30, 1, 0, "DONE_LIST");
+    link_sections(&todo_label_section, &done_label_section);
+    link_sections(&todo_label_section, &done_list_section);
+
     Widget todo_widget = create_widget('*', 1, 60, 15, 0, 0, 0, &todo_label_section);
 
-    // Item *done_items = create_items(done_array, done_array_len);
-    // Label done_label = create_label("DONE");
-    // Section done_label_section = create_section(&done_label, LABEL, 20, 1, 0, 0, 0, "done_LABEL");
-    // List done_list = create_list(done_items, CHECK_BOX, false, NULL);
-    // Section done_list_section = create_section(&done_list, LIST, 20, 1, 0, 1, 0, "done_LIST");
-    // link_sections(&done_label_section, &done_list_section);
-
-    // Widget done_widget = create_widget('*', 1, 58, 15, 60, 1, 0, &done_label_section);
+    // Widget done_widget = create_widget('*', 1, 60, 15, 60, 0, 1, &done_label_section);
     // link_widgets(&todo_widget, &done_widget);
 
     window.widgets = &todo_widget;
+    window.focused_widget = &todo_widget;
+    todo_widget.focused_section = get_next_editable_section(window);
 
+    // Section *section = get_next_editable_section(window);
+    // Section *section2 = get_next_editable_section(window);
+
+    // Load elements in pixels array
     update_window(window);
-    render(window);
+
+    // Focus the first availble element
+    focus_section(window);
+
+    // Hide the cursor
+    hideCursor();
+
+    // Handle usert input
+    handle_input(window);
 
     // Section done_label_section;
     // Label done_label;

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct Dog
 {
@@ -50,12 +51,42 @@ void print_person(Person p)
     print_dog(p.dog);
 }
 
+typedef struct W
+{
+    int *arr;
+} W;
+
+void change_num(W w)
+{
+    w.arr[1] = 10;
+}
+
 int main(void)
 {
-    Dog dog = create_dog("Leo");
-    Person p = create_person("Marco", 19, dog);
+    W w;
+    size_t len = 3;
+    w.arr = malloc(len * sizeof(int));
 
-    print_person(p);
+    for (size_t i = 0; i < len; ++i)
+    {
+        w.arr[i] = i + 1;
+    }
+
+    for (size_t i = 0; i < len; i++)
+    {
+        printf("%d ", w.arr[i]);
+    }
+    printf("\n");
+
+    change_num(w);
+
+    for (size_t i = 0; i < len; i++)
+    {
+        printf("%d ", w.arr[i]);
+    }
+    printf("\n");
+
+    free(w.arr);
 
     return 0;
 }

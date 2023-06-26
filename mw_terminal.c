@@ -167,7 +167,7 @@ void getWindowSize(int *width, int *height)
     // *height = csbi.dwMaximumWindowSize.Y;
 }
 
-Pixel alloc_pixel(char pixel, pixel_type type, bool active, bool focused)
+Pixel create_pixel(char pixel, pixel_type type, bool active, bool focused)
 {
     Pixel p;
     p.pixel = pixel;
@@ -203,7 +203,7 @@ Pixel **initialize2DArray(size_t width, size_t height)
         for (size_t x = 0; x < width; x++)
         {
 
-            (pixels)[y][x] = alloc_pixel('-', EMPTY, INACTIVE, UNFOCUSED);
+            (pixels)[y][x] = create_pixel('-', EMPTY, INACTIVE, UNFOCUSED);
         }
     }
 
@@ -284,12 +284,12 @@ Section create_section(void *el, section_type type, size_t width, size_t heigth,
     return s;
 }
 
-List create_list(Item *items, size_t item_count, list_type type, bool checked, Section *target)
+List create_list(Item *items, size_t item_count, list_type type, bool checked)
 {
     List list;
     list.items = items;
     list.item_count = item_count;
-    list.target = target;
+    list.target = NULL;
     list.type = type;
     list.checked = checked;
     list.item_index = 0;
@@ -576,14 +576,14 @@ void update_widget(Pixel ***pixels, Widget *curr_widget, size_t window_width, si
             {
                 if (y == 0 || y == y_limit - 1)
                 {
-                    temp->pixel = '*';
+                    temp->pixel = curr_widget->border_char;
                     temp->active = ACTIVE;
                     temp->focused = UNFOCUSED;
                     temp->type = BORDER;
                 }
                 else if (x == x_start || x == x_limit - 1)
                 {
-                    temp->pixel = '*';
+                    temp->pixel = curr_widget->border_char;
                     temp->active = ACTIVE;
                     temp->focused = UNFOCUSED;
                     temp->type = BORDER;
@@ -620,177 +620,6 @@ void update_window(Window window)
     }
 }
 
-// void clean_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section, int focus_index)
-// {
-//     size_t y_clean_start = 0;
-//     size_t y_clean_end = 0;
-//     size_t x_clean_start = 0;
-//     size_t x_clean_end = 0;
-
-//     if (curr_section->type == LIST)
-//     {
-//         List *list = curr_section->el;
-//         y_clean_start = curr_widget->pos_y + curr_section->pos_y + focus_index + 1;
-//         y_clean_end = y_clean_start + 1;
-//         x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
-//         x_clean_end = x_clean_start + strlen(get(list->items, focus_index));
-
-//         // Clean section pixels
-//         for (size_t y = y_clean_start; y < y_clean_end; y++)
-//         {
-
-//             for (size_t x = x_clean_start; x < x_clean_end; ++x)
-//             {
-//                 ((*pixels)[y][x]).focused = UNFOCUSED;
-//             }
-//         }
-//     }
-//     else if (curr_section->type == INPUT)
-//     {
-//         y_clean_start = (curr_widget->pos_y + curr_section->pos_y) + 1;
-//         y_clean_end = y_clean_start + curr_section->height;
-//         x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
-//         x_clean_end = x_clean_start + curr_section->width;
-
-//         // Set new focused pixels
-//         for (size_t y = y_clean_start; y < y_clean_end; y++)
-//         {
-//             for (size_t x = x_clean_start; x < x_clean_end; ++x)
-//             {
-//                 Pixel *temp = &((*pixels)[y][x]);
-
-//                 if ((y == y_clean_start || y == y_clean_end - 1) || (x == x_clean_start || x == x_clean_end - 1))
-//                 {
-//                     temp->focused = UNFOCUSED;
-//                 }
-//             }
-//         }
-//     }
-//     else
-//     {
-//         EXIT_ON_ERROR("Section type undefined for new_section");
-//     }
-
-//     // printf("CLEAR\nCurrent section: %s\n", curr_section->label);
-
-//     // printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
-//     //        x_clean_start, x_clean_end, y_clean_start, y_clean_end);
-// }
-
-// void clean_section(Pixel ***pixels, Widget *curr_widget, Section *curr_section)
-// {
-
-//     size_t y_clean_start = curr_widget->pos_y + curr_section->pos_y + 1;
-//     size_t y_clean_end = y_clean_start + curr_section->height;
-//     size_t x_clean_start = curr_widget->pos_x + curr_section->pos_x + 1;
-//     size_t x_clean_end = x_clean_start + curr_section->width;
-
-//     // printf("x_clean_start: %zu, x_clean_end: %zu, y_clean_start: %zu, x_clean_end: %zu\n",
-//     //        x_clean_start, x_clean_end, y_clean_start, y_clean_end);
-
-//     for (size_t y = y_clean_start; y < y_clean_end; y++)
-//     {
-
-//         for (size_t x = x_clean_start; x < x_clean_end; ++x)
-//         {
-//             ((*pixels)[y][x]).focused = UNFOCUSED;
-//             ((*pixels)[y][x]).active = INACTIVE;
-//             ((*pixels)[y][x]).pixel = ' ';
-//         }
-//     }
-// }
-
-// bool change_focused_element(Pixel ***pixels, Widget *curr_widget, Section *curr_section,
-//                             int *focus_index_ptr, int dir)
-// {
-//     // printf("Current section: %s\n", curr_section->label);
-
-//     // printf("focus_index: %d, pos_x: %zu, pos_y: %zu\n",
-//     //        *focus_index_ptr, curr_section->pos_x, curr_section->pos_y);
-
-//     // Get last section before changing widget
-
-//     int focus_index = *focus_index_ptr;
-
-//     size_t y_new_start;
-//     size_t y_new_end;
-//     size_t x_new_start;
-//     size_t x_new_end;
-
-//     if (curr_section->type == LIST)
-//     {
-//         List *list = curr_section->el;
-
-//         if (focus_index > (int)list->item_count)
-//         {
-//             *focus_index_ptr = list->item_count - 1;
-//             focus_index = list->item_count - 1;
-//         }
-//         else if (focus_index == (int)list->item_count || focus_index < 0)
-//         {
-//             return false;
-//         }
-
-//         y_new_start = (curr_widget->pos_y + curr_section->pos_y) + focus_index + 1;
-//         y_new_end = y_new_start + 1;
-//         x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
-//         x_new_end = x_new_start + strlen(get(list->items, focus_index));
-
-//         if (dir == NEXT && focus_index - 1 >= 0)
-//         {
-//             // Not first or last element, can clean previous element
-//             clean_element(pixels, curr_widget, curr_section, focus_index - 1);
-//         }
-//         else if (dir == PREVIOUS && focus_index + 1 <= (int)list->item_count)
-//         {
-//             clean_element(pixels, curr_widget, curr_section, focus_index + 1);
-//         }
-//         else if (dir == CURRENT)
-//         {
-//             clean_element(pixels, curr_widget, curr_section, focus_index);
-//         }
-
-//         // Set new focused pixels
-//         for (size_t y = y_new_start; y < y_new_end; y++)
-//         {
-//             for (size_t x = x_new_start; x < x_new_end; ++x)
-//             {
-//                 ((*pixels)[y][x]).focused = FOCUSED;
-//             }
-//         }
-//     }
-//     else if (curr_section->type == INPUT)
-//     {
-//         y_new_start = (curr_widget->pos_y + curr_section->pos_y) + 1;
-//         y_new_end = y_new_start + curr_section->height;
-//         x_new_start = curr_widget->pos_x + curr_section->pos_x + 1;
-//         x_new_end = x_new_start + curr_section->width;
-
-//         // Set new focused pixels
-//         for (size_t y = y_new_start; y < y_new_end; y++)
-//         {
-//             for (size_t x = x_new_start; x < x_new_end; ++x)
-//             {
-//                 Pixel *temp = &((*pixels)[y][x]);
-
-//                 if ((y == y_new_start || y == y_new_end - 1) || (x == x_new_start || x == x_new_end - 1))
-//                 {
-//                     temp->focused = FOCUSED;
-//                 }
-//             }
-//         }
-//     }
-//     else
-//     {
-//         EXIT_ON_ERROR("Section type undefined");
-//     }
-
-//     // printf("x_new_start: %zu, x_new_end: %zu, y_new_start: %d, x_new_end: %zu\n",
-//     //        x_new_start, x_new_end, y_new_start, y_new_end);
-
-//     return true;
-// }
-
 Item *get_item(Item *items, int index)
 {
     Item *curr = items;
@@ -807,6 +636,27 @@ Item *get_item(Item *items, int index)
     }
 
     return NULL;
+}
+
+void remove_item(Item *items, int index)
+{
+    Item *curr = items;
+    int count = 0;
+
+    while (curr != NULL)
+    {
+        if (count == index)
+        {
+            break;
+        }
+        curr = curr->next;
+        count++;
+    }
+
+    curr->prev->next = curr->next;
+    curr->prev->next->prev = curr->prev;
+
+    free(curr);
 }
 
 void unfocus_item(Window w, Section *focused_section, int dir)
@@ -928,7 +778,7 @@ bool focus_section(Window w)
 
     if (focused_section == NULL)
     {
-        EXIT_ON_ERROR("Trying to focus on a NULL section");
+        return false;
     }
 
     if (focused_section->type == LIST)
@@ -942,6 +792,53 @@ bool focus_section(Window w)
     }
 
     return false;
+}
+
+void unfocus_widget(Window window, Widget w)
+{
+    int xi = w.pos_x;
+    int xf = w.pos_x + w.width;
+    int yi = w.pos_y;
+    int yf = w.pos_y + w.height;
+
+    for (int x = xi; x < xf; ++x)
+    {
+        (window.pixels)[yi][x].focused = UNFOCUSED;
+        (window.pixels)[yf][x].focused = UNFOCUSED;
+    }
+
+    for (int y = yi + 1; y < yf; ++y)
+    {
+        (window.pixels)[y][xi].focused = UNFOCUSED;
+        (window.pixels)[y][xf - 1].focused = UNFOCUSED;
+    }
+}
+
+void focus_widget(Window w)
+{
+    Widget *focused_widget = w.focused_widget;
+
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
+
+    int xi = focused_widget->pos_x;
+    int xf = focused_widget->pos_x + focused_widget->width;
+    int yi = focused_widget->pos_y;
+    int yf = focused_widget->pos_y + focused_widget->height;
+
+    for (int x = xi; x < xf; ++x)
+    {
+        (w.pixels)[yi][x].focused = FOCUSED;
+        (w.pixels)[yf][x].focused = FOCUSED;
+    }
+
+    for (int y = yi + 1; y < yf; ++y)
+    {
+        (w.pixels)[y][xi].focused = FOCUSED;
+        (w.pixels)[y][xf - 1].focused = FOCUSED;
+    }
 }
 
 Section *get_next_editable_section(Window w)
@@ -988,33 +885,71 @@ Section *get_next_editable_section(Window w)
     return NULL;
 }
 
-// Section *get_prev_editable_section(Widget *curr_widget, Section *curr_section)
-// {
-//     // printf("PREV\n-------------------------------------------------------\n");
-//     // printf("For widget id: %d\n", curr_widget->id);
+Section *get_prev_editable_section(Window w)
+{
+    Widget *focused_widget = w.focused_widget;
 
-//     Section *s = curr_section;
-//     Section *temp;
+    if (focused_widget == NULL)
+    {
+        EXIT_ON_ERROR_PAR("focused_widget is NULL for window id=%zu", w.id);
+    }
 
-//     while (s != NULL)
-//     {
-//         temp = s;
+    Section *s = focused_widget->sections;
 
-//         // printf("Section label: %s, Section id: %d, Current Section: %d\n", s->label, s->id, curr_widget->current_section);
-//         if (temp->state == EDITABLE && (s->id != curr_widget->current_section))
-//         {
-//             curr_widget->current_section = s->id;
-//             // printf("-------------------------------------------------------\nEND_PREV\n");
+    if (s == NULL)
+    {
+        // No section on widget
+        return NULL;
+    }
 
-//             return temp;
-//         }
+    Section *focused_section = focused_widget->focused_section;
 
-//         s = s->prev;
-//     }
+    if (focused_section != NULL)
+    {
+        s = focused_section->prev;
+        if (s == NULL)
+        {
+            return s;
+        }
+    }
 
-//     // printf("-------------------------------------------------------\nEND_PREV\n");
-//     return NULL;
-// }
+    Section *temp;
+    while (s != NULL)
+    {
+        temp = s;
+        if (temp->state == EDITABLE)
+        {
+            focused_widget->focused_section = temp;
+            return temp;
+        }
+
+        s = s->prev;
+    }
+
+    return NULL;
+}
+
+void transfer_item(List *list)
+{
+    Item *src_items = list->items;
+    Item *dst_items = NULL;
+    if (list->target->type == LIST)
+    {
+        dst_items = ((List *)(list->target->el))->items;
+    }
+    else
+    {
+        EXIT_ON_ERROR("List target is not another list");
+    }
+
+    Item *item_tbf = get_item(src_items, list->item_index);
+
+    Item *last_dst_item = get_item(dst_items, list->item_count - 1);
+
+    
+
+    last_dst_item->next = item_tbf;
+}
 
 // bool action(Pixel ***pixels, Widget *curr_widget, Section **curr_section_ptr,
 //             int *focus_index, size_t window_width, size_t window_height)
@@ -1216,7 +1151,13 @@ void render(Window w)
 
             paint_coord.X = x;
             paint_coord.Y = y;
-            if (curr_pixel.focused)
+
+            if (curr_pixel.focused && curr_pixel.type == BORDER)
+            {
+                WORD attribute = FOREGROUND_RED | FOREGROUND_INTENSITY;
+                FillConsoleOutputAttribute(hConsole, attribute, 1, paint_coord, &paint_written);
+            }
+            else if (curr_pixel.focused)
             {
 
                 WORD attribute = 0 | BACKGROUND_INTENSITY | BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
@@ -1261,6 +1202,11 @@ void handle_input(Window window)
 
             Section *focused_section = window.focused_widget->focused_section;
 
+            if (focused_section == NULL)
+            {
+                break;
+            }
+
             if (focused_section->type == LIST)
             {
                 List *list = (List *)focused_section->el;
@@ -1292,13 +1238,84 @@ void handle_input(Window window)
             break;
         case 9:
             // TAB
+
+            if (GetKeyState(VK_SHIFT) & 0x8000)
             {
-                Section *temp = window.focused_widget->focused_section;
-                unfocus_section(window, temp);
+                // SHIFT + TAB
+                Section *temp;
+                if (window.focused_widget->focused_section == NULL)
+                {
+                    temp = NULL;
+                }
+                else
+                {
+                    unfocus_section(window, window.focused_widget->focused_section);
+                    temp = get_prev_editable_section(window);
+                }
+
+                if (temp == NULL)
+                {
+                    // No more editable sections in widget
+                    if (window.focused_widget->prev != NULL)
+                    {
+                        // Change to previous widget if available
+                        unfocus_widget(window, *window.focused_widget);
+                        window.focused_widget = window.focused_widget->prev;
+                        focus_widget(window);
+                        focus_section(window);
+                        need_to_render = true;
+                    }
+                }
+                else
+                {
+                    window.focused_widget->focused_section = temp;
+                    need_to_render = focus_section(window);
+                }
+
+                break;
             }
-            window.focused_widget->focused_section = get_next_editable_section(window);
-            need_to_render = focus_section(window);
+
+            {
+                Section *temp;
+                if (window.focused_widget->focused_section == NULL)
+                {
+                    temp = NULL;
+                }
+                else
+                {
+                    unfocus_section(window, window.focused_widget->focused_section);
+                    temp = get_next_editable_section(window);
+                }
+
+                if (temp == NULL)
+                {
+                    // No more editable sections in widget
+                    if (window.focused_widget->next != NULL)
+                    {
+                        // Change to next widget if available
+                        unfocus_widget(window, *window.focused_widget);
+                        window.focused_widget = window.focused_widget->next;
+                        window.focused_widget->focused_section = get_next_editable_section(window);
+                        focus_widget(window);
+                        need_to_render = true;
+                    }
+                }
+                else
+                {
+                    window.focused_widget->focused_section = temp;
+                    need_to_render = focus_section(window);
+                }
+            }
             break;
+        case '\r':
+        {
+            Section *focused_section = window.focused_widget->focused_section;
+
+            if (focused_section->type == LIST)
+            {
+                transfer_item((List *)focused_section->el);
+            }
+        }
         }
     }
 }
@@ -1318,37 +1335,51 @@ int main(void)
     load_pixels(window);
 
     Item *todo_items = create_items(todo_array, todo_array_len);
-
     Label todo_label = create_label("TODO");
     Section todo_label_section = create_section(&todo_label, LABEL, 20, 1, 5, 0, 0, "TODO_LABEL");
-    List todo_list = create_list(todo_items, todo_array_len, CHECK_BOX, false, NULL);
+    List todo_list = create_list(todo_items, todo_array_len, CHECK_BOX, false);
     Section todo_list_section = create_section(&todo_list, LIST, 1, 1, 5, 1, 0, "TODO_LIST");
-    link_sections(&todo_label_section, &todo_list_section);
 
     Item *done_items = create_items(done_array, done_array_len);
     Label done_label = create_label("DONE");
     Section done_label_section = create_section(&done_label, LABEL, 20, 1, 30, 0, 0, "DONE_LABEL");
-    List done_list = create_list(done_items, done_array_len, CHECK_BOX, true, NULL);
+    List done_list = create_list(done_items, done_array_len, CHECK_BOX, true);
     Section done_list_section = create_section(&done_list, LIST, 1, 1, 30, 1, 0, "DONE_LIST");
+
+    // Link sections
+    link_sections(&todo_label_section, &todo_list_section);
     link_sections(&todo_label_section, &done_label_section);
     link_sections(&todo_label_section, &done_list_section);
 
-    Widget todo_widget = create_widget('*', 1, 60, 15, 0, 0, 0, &todo_label_section);
+    // Create widgets
+    Widget lists_widget = create_widget('*', 1, 60, 15, 0, 0, 0, &todo_label_section);
+    Widget label_widget = create_widget('*', 1, 60, 15, 60, 0, 1, NULL);
 
-    // Widget done_widget = create_widget('*', 1, 60, 15, 60, 0, 1, &done_label_section);
-    // link_widgets(&todo_widget, &done_widget);
+    // Link widgets
+    link_widgets(&lists_widget, &label_widget);
 
-    window.widgets = &todo_widget;
-    window.focused_widget = &todo_widget;
-    todo_widget.focused_section = get_next_editable_section(window);
+    // Link lists
+    todo_list.target = &done_list_section;
+    done_list.target = &todo_list_section;
+
+    window.widgets = &lists_widget;
+    window.focused_widget = &lists_widget;
+    lists_widget.focused_section = get_next_editable_section(window);
 
     // Section *section = get_next_editable_section(window);
-    // Section *section2 = get_next_editable_section(window);
+    // Section *section2 = get_prev_editable_section(window);
 
-    // Load elements in pixels array
+    // printf("label 1: %s\n", lists_widget.focused_section->label);
+    // printf("label 2: %s\n", section->label);
+    // printf("label 2: %s\n", section2->label);
+
+    // Load elements in pixels array - Needs to be done before focusing!
     update_window(window);
 
-    // Focus the first availble element
+    // Focus in the first available widget
+    focus_widget(window);
+
+    // Focus the first available element
     focus_section(window);
 
     // Hide the cursor

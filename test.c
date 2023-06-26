@@ -163,7 +163,26 @@
 //     }
 // }
 
+void set_window_size(int width, int height)
+{
+
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    COORD bufferSize = {width - 1, height - 1}; // Set the new buffer size
+
+    // Set the new buffer size
+    SetConsoleScreenBufferSize(hConsole, bufferSize);
+
+    // Set the new window size and position
+    SMALL_RECT windowSize = {0, 0, width - 1, height - 1};
+    SetConsoleWindowInfo(hConsole, TRUE, &windowSize);
+}
+
 int main(void)
+{
+    set_window_size(120, 31);
+    return 0;
+}
+int main2(void)
 {
     // HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     // COORD coord;
